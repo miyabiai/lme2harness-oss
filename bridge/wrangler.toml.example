@@ -1,0 +1,38 @@
+# lme2harness-bridge の設定。コピーして wrangler.toml にし、database_id を自分の L Harness の D1 に合わせる。
+name = "lme2harness-bridge"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# L Harness と同じ D1 を読み取り専用で参照する（友だちの line_user_id → friends.id の解決用）
+[[d1_databases]]
+binding = "DB"
+database_name = "line-harness"
+database_id = "ここに L Harness の D1 database_id"
+
+# 重複排除（X-Lme-Delivery-Id）。無くても動くが、再送時に二重処理になる
+# [[kv_namespaces]]
+# binding = "DEDUP"
+# id = "ここに KV namespace id"
+
+# L Harness へのサービス連携（必須。同じアカウントの Worker を workers.dev の URL で呼ぶとエラー1042で遮断される）
+[[services]]
+binding = "HARNESS"
+service = "L Harness の Worker 名"
+
+[vars]
+# L Harness Worker の URL
+HARNESS_URL = "https://your-line-harness.workers.dev"
+# エルメの LINE転送で届く replyToken を L Harness に渡さない（エルメが先に消費しているため）。既定 "1"
+STRIP_REPLY_TOKEN = "1"
+# エルメの友だち情報（friend_info）を L Harness の metadata に反映する。既定 "1"
+SYNC_FRIEND_INFO = "1"
+
+# 秘密は wrangler secret put で入れる（wrangler.toml に書かない）:
+#   LINE_CHANNEL_SECRET   … LINE Messaging API のチャネルシークレット（署名の付け直しに使う）
+#   HARNESS_API_KEY       … L Harness の API キー
+#   LME_WEBHOOK_SECRET    … エルメ「Webhook転送」画面の署名シークレット（whsec_…）
+#   LME_WEBHOOK_SECRET_PREVIOUS … 再生成時の旧シークレット（任意・2分だけ受け付ける）
+#   LME_API_KEY           … エルメ公開APIキー（タグ名の解決に使う。任意）
+#   PATH_TOKEN_LINE       … 受信パスの推測防止トークン（48桁以上の英数字）
+#   PATH_TOKEN_LMESSAGE   … 同上（別の値）

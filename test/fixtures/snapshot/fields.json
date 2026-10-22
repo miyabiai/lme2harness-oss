@@ -1,0 +1,1 @@
+[{"id":-1,"title":"システム表示名","type":"input","options":null},{"id":-3,"title":"メールアドレス","type":"input","options":null},{"id":-4,"title":"生年月日","type":"calendar","options":null},{"id":5001,"title":"性別","type":"select","options":[{"option_id":1,"label":"男性"},{"option_id":2,"label":"女性"}]},{"id":5002,"title":"ポイント","type":"POINT","options":null}]

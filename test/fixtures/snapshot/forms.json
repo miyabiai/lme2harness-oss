@@ -1,0 +1,126 @@
+[
+ {
+  "id": 601,
+  "name": "アンケート",
+  "title": "ご意見アンケート",
+  "description": "ご協力ください",
+  "form_type": "division",
+  "unique_key": "AbCdEf",
+  "count_user_reply": 1,
+  "actions_on_open": [],
+  "actions_on_reply": [
+   {
+    "id": 11,
+    "action_id": 11,
+    "type": "tag",
+    "content": "タグ「会員」をつける",
+    "data": {
+     "ids": [
+      "101"
+     ],
+     "action": 1,
+     "is_select_all": false
+    }
+   },
+   {
+    "id": null,
+    "action_id": null,
+    "type": "text",
+    "content": "ご回答ありがとうございました"
+   }
+  ],
+  "pages": [
+   {
+    "page_id": 1,
+    "button_submit_name": "送信",
+    "fields": [
+     {
+      "id": 1,
+      "type": "text_new",
+      "name": "text_new",
+      "label": "テキスト",
+      "title": "テキスト",
+      "help": "<p>説明文</p>",
+      "rules": "{\"required\":true}",
+      "settings": "{\"type\":\"text\"}",
+      "position": 1,
+      "placeholder": ""
+     },
+     {
+      "id": 11,
+      "type": "text_new",
+      "name": "text_new",
+      "label": "メールアドレス",
+      "title": "メールアドレスを入力してください",
+      "help": "",
+      "rules": "{\"required\":true}",
+      "settings": "{\"type\":\"email\"}",
+      "position": 1,
+      "placeholder": ""
+     },
+     {
+      "id": 2,
+      "type": "text",
+      "name": "text_8",
+      "label": "テキストボックス",
+      "title": "お名前",
+      "help": "",
+      "rules": "{\"required\":true}",
+      "settings": "{\"type\":\"text\"}",
+      "position": 2,
+      "placeholder": "山田"
+     },
+     {
+      "id": 3,
+      "type": "select",
+      "name": "select2_5",
+      "label": "複数選択肢",
+      "title": "性別",
+      "help": "",
+      "rules": "{\"required\":true}",
+      "settings": "{\"type\":\"select\",\"items\":[{\"label\":\"男性\",\"value\":\"男性\"},{\"label\":\"女性\",\"value\":\"女性\"}]}",
+      "position": 3,
+      "placeholder": ""
+     },
+     {
+      "id": 4,
+      "type": "date_time",
+      "name": "date_time",
+      "label": "生年月日",
+      "title": "生年月日",
+      "help": "",
+      "rules": "{\"required\":false}",
+      "settings": "{\"type\":\"date_format\"}",
+      "position": 4,
+      "placeholder": ""
+     },
+     {
+      "id": 5,
+      "type": "friend_info_file",
+      "name": "friend_info_file",
+      "label": "",
+      "title": "写真",
+      "help": "",
+      "rules": "{\"required\":false}",
+      "settings": null,
+      "position": 5,
+      "placeholder": ""
+     },
+     {
+      "id": 6,
+      "type": "text",
+      "name": "text_8",
+      "label": "テキストボックス",
+      "title": "ご意見",
+      "help": "",
+      "rules": "{\"required\":false}",
+      "settings": "{\"type\":\"text\",\"items\":[{\"label\":\"\",\"value\":\"\"}]}",
+      "position": 6,
+      "placeholder": "自由に"
+     }
+    ]
+   }
+  ],
+  "created_at": "2026-02-01 00:00:00"
+ }
+]

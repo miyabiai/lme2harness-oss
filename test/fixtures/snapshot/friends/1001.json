@@ -1,0 +1,141 @@
+{
+ "row": {
+  "lmessage_friend_id": 1001,
+  "line_friend_id": "U00000000000000000000000000001001",
+  "line_name": "太郎",
+  "is_blocked": false,
+  "followed_at": "2026-01-15 10:00:00",
+  "blocked_at": null
+ },
+ "detail": {
+  "lmessage_friend_id": 1001,
+  "line_friend_id": "U00000000000000000000000000001001",
+  "line_name": "太郎",
+  "is_old_friend": false,
+  "is_blocked": false,
+  "followed_at": "2026-01-15 10:00:00",
+  "blocked_at": null,
+  "memo": [],
+  "tags": [
+   {
+    "tag_id": 101,
+    "tag_name": "会員",
+    "added_at": "2026-01-20 10:00:00"
+   },
+   {
+    "tag_id": 102,
+    "tag_name": "流入_Instagram",
+    "added_at": "2026-01-15 10:00:00"
+   }
+  ],
+  "friend_info": [
+   {
+    "id": -1,
+    "title": "システム表示名",
+    "type": "input",
+    "value": "山田太郎"
+   },
+   {
+    "id": -3,
+    "title": "メールアドレス",
+    "type": "input",
+    "value": "taro@example.com"
+   },
+   {
+    "id": 5001,
+    "title": "性別",
+    "type": "select",
+    "value": "男性"
+   },
+   {
+    "id": 5002,
+    "title": "ポイント",
+    "type": "POINT",
+    "value": 20
+   }
+  ],
+  "scenarios": [
+   {
+    "scenario_id": 301,
+    "scenario_name": "友だち追加後フォロー",
+    "status": "following",
+    "started_at": "2026-01-15 10:00:05",
+    "ended_at": null
+   }
+  ],
+  "purchase_history": [],
+  "booking_history": {
+   "salon": [],
+   "lesson": []
+  }
+ },
+ "conversation": {
+  "lmessage_friend_id": 1001,
+  "line_friend_id": "U00000000000000000000000000001001",
+  "confirm_status": "unread",
+  "handling_status": {
+   "id": 9001,
+   "name": "対応中"
+  },
+  "last_message_date": "2026-03-02 10:00:00",
+  "complete": true,
+  "messages": [
+   {
+    "message_id": 1,
+    "sender": "bot",
+    "sender_name": null,
+    "message_type": "template",
+    "content": [
+     {
+      "type": "text",
+      "content": "友だち追加ありがとうございます！"
+     }
+    ],
+    "source": {
+     "name": null,
+     "type": "template"
+    },
+    "sent_at": "2026-01-15 10:00:01"
+   },
+   {
+    "message_id": 2,
+    "sender": "friend",
+    "sender_name": "太郎",
+    "message_type": "text",
+    "content": "こんにちは",
+    "source": null,
+    "sent_at": "2026-01-15 10:05:00"
+   },
+   {
+    "message_id": 3,
+    "sender": "bot",
+    "sender_name": "担当",
+    "message_type": "text",
+    "content": "こんにちは！ご連絡ありがとうございます",
+    "source": {
+     "type": "chat"
+    },
+    "sent_at": "2026-01-15 10:06:00"
+   },
+   {
+    "message_id": 4,
+    "sender": "friend",
+    "sender_name": "太郎",
+    "message_type": "image",
+    "content": "https://example.com/photo.jpg",
+    "source": null,
+    "sent_at": "2026-03-02 10:00:00"
+   },
+   {
+    "message_id": 5,
+    "sender": "friend",
+    "sender_name": "太郎",
+    "message_type": "sticker",
+    "content": null,
+    "source": null,
+    "sent_at": "2026-03-02 10:00:30"
+   }
+  ]
+ },
+ "fetched_at": "2026-10-09T00:00:30.000Z"
+}

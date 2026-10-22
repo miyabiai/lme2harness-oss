@@ -1,0 +1,5 @@
+[{"id":301,"name":"友だち追加後フォロー","created_at":"2026-01-05 09:00:00","steps":[
+ {"id":4001,"name":"","order_number":1,"delay_type":"immediate","start_day":null,"start_time":null,"templates":[{"id":7001,"name":null,"type":"text","content":"[FRIEND_INFO_abc]さん、登録ありがとうございます！"}],"send_count":10,"filters":[],"actions":[{"id":1,"action_id":1,"type":"tag","content":"タグ「会員」をつける","data":{"ids":["101"],"action":1,"is_select_all":false}}]},
+ {"id":4002,"name":"","order_number":2,"delay_type":"date_based","start_day":1,"start_time":"12:30:00","templates":[{"id":7002,"name":null,"type":"text","content":"翌日のご案内です"},{"id":7003,"name":null,"type":"image","content":"https://example.com/img.jpg"}],"send_count":5,"filters":[],"actions":[]},
+ {"id":4003,"name":"","order_number":3,"delay_type":"date_based","start_day":2,"start_time":"21:00:00","templates":[],"send_count":3,"filters":[],"actions":[{"id":2,"action_id":2,"type":"tag","content":"タグ「VIP」をつける","data":{"ids":["103"],"action":1,"is_select_all":false}}]}
+]},{"id":302,"name":"空のシナリオ","created_at":"2026-01-06 09:00:00","steps":[]}]

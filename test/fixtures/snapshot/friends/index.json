@@ -1,0 +1,2 @@
+[{"lmessage_friend_id":1001,"line_friend_id":"U00000000000000000000000000001001","line_name":"太郎","is_blocked":false,"followed_at":"2026-01-15 10:00:00","blocked_at":null},
+ {"lmessage_friend_id":1002,"line_friend_id":"U00000000000000000000000000001002","line_name":"花子","is_blocked":true,"followed_at":"2026-01-16 10:00:00","blocked_at":"2026-02-10 10:00:00"}]

@@ -1,0 +1,56 @@
+{
+  "name": "lme2harness",
+  "version": "0.1.0",
+  "description": "L Message（エルメ）から L Harness（line-harness-oss）へ顧客データを移行し、並行運用ブリッジを提供する CLI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/miyabiai/lme2harness-oss.git"
+  },
+  "homepage": "https://github.com/miyabiai/lme2harness-oss#readme",
+  "bugs": {
+    "url": "https://github.com/miyabiai/lme2harness-oss/issues"
+  },
+  "type": "module",
+  "bin": {
+    "lme2harness": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "bridge/src",
+    "bridge/package.json",
+    "bridge/pnpm-lock.yaml",
+    "bridge/tsconfig.json",
+    "bridge/wrangler.toml.example",
+    "docs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  },
+  "keywords": [
+    "line",
+    "l-harness",
+    "line-harness",
+    "lmessage",
+    "エルメ",
+    "migration",
+    "cloudflare"
+  ]
+}

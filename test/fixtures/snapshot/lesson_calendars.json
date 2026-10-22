@@ -1,0 +1,23 @@
+[
+  {
+    "id": 501,
+    "calendar_name": "見本レッスン",
+    "detail": {
+      "id": 501,
+      "calendar_name": "見本レッスン",
+      "line_name": "見本教室",
+      "courses": [
+        { "id": 9001, "course_name": "ヨガ（60分）", "system_name": null, "duration_minutes": 60, "amount": 3000, "course_image": null, "course_description": null, "visible": true }
+      ],
+      "forms": [],
+      "booking_settings": { "approve_type": "auto", "cancel_type": "auto" },
+      "created_at": "2026-10-01 10:00:00"
+    },
+    "bookings": [
+      { "id": 1, "reception_id": 77, "course_id": 9001, "booking_date": "2030-10-20 10:00 ~ 11:00", "lmessage_friend_id": 1001, "status": "booked", "payment_status": "no_bill", "payment_amount": 3000, "form_answers": [{ "question": "お名前", "answer": "見本一郎" }], "created_at": "2026-10-13 12:31:37" },
+      { "id": 2, "reception_id": 77, "course_id": 9001, "booking_date": "2030-10-20 10:00 ~ 11:00", "lmessage_friend_id": 1002, "status": "cancelled", "payment_status": null, "payment_amount": null, "form_answers": [], "created_at": "2026-10-13 12:40:00" },
+      { "id": 3, "reception_id": 66, "course_id": 9001, "booking_date": "2020-01-10 19:00 ~ 20:00", "lmessage_friend_id": 1001, "status": "admin_booked", "payment_status": null, "payment_amount": null, "form_answers": [], "created_at": "2020-01-01 09:00:00" },
+      { "id": 4, "reception_id": 66, "course_id": 9001, "booking_date": "2020-01-10 19:00 ~ 20:00", "lmessage_friend_id": null, "status": "admin_booked", "payment_status": null, "payment_amount": null, "form_answers": [], "created_at": "2020-01-01 09:00:00" }
+    ]
+  }
+]

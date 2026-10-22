@@ -1,0 +1,5 @@
+{"row":{"lmessage_friend_id":1002,"line_friend_id":"U00000000000000000000000000001002","line_name":"花子","is_blocked":true,"followed_at":"2026-01-16 10:00:00","blocked_at":"2026-02-10 10:00:00"},
+ "detail":{"lmessage_friend_id":1002,"line_friend_id":"U00000000000000000000000000001002","line_name":"花子","is_old_friend":false,"is_blocked":true,"followed_at":"2026-01-16 10:00:00","blocked_at":"2026-02-10 10:00:00","memo":[],
+   "tags":[{"tag_id":102,"tag_name":"流入_Instagram","added_at":"2026-01-16 10:00:00"}],"friend_info":[],"scenarios":[{"id":301,"name":"友だち追加後フォロー","status":"completed"}],"purchase_history":[],"booking_history":{"salon":[],"lesson":[]}},
+ "conversation":{"lmessage_friend_id":1002,"confirm_status":"read","handling_status":null,"last_message_date":"2026-02-01 10:00:00","complete":true,"messages":[]},
+ "fetched_at":"2026-10-09T00:00:31.000Z"}

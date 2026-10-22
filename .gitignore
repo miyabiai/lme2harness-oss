@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.wrangler/
+.env
+.env.*
+!.env.example
+/snapshot/
+/out/
+.lme2harness/
+lme2harness.config.json
+*.log
+.DS_Store
+bridge/node_modules/
+bridge/.wrangler/
+bridge/wrangler.toml

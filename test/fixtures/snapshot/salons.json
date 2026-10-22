@@ -1,0 +1,134 @@
+[
+ {
+  "id": 301,
+  "calendar_name": "移行デモサロン",
+  "detail": {
+   "id": 301,
+   "calendar_name": "移行デモサロン",
+   "manager_name": "デモ店",
+   "enable_use_calendar": true,
+   "use_course": true,
+   "use_staff": true,
+   "setting_time_unit": 30,
+   "description_top": null,
+   "image_top": null,
+   "menus": [
+    {
+     "menu_name": null,
+     "menu_image": null,
+     "courses": [
+      {
+       "id": 3101,
+       "course_name": "移行デモコース（60分）",
+       "system_name": "デモコースA",
+       "duration_minutes": 60,
+       "amount": 5000,
+       "course_image": null,
+       "course_description": null,
+       "visible": true,
+       "actions": null,
+       "messages": null
+      },
+      {
+       "id": 3102,
+       "course_name": "非表示コース",
+       "system_name": null,
+       "duration_minutes": 30,
+       "amount": 3000,
+       "visible": false
+      }
+     ]
+    }
+   ],
+   "staff": [
+    {
+     "id": 3201,
+     "staff_name": "運営者",
+     "staff_image": null,
+     "staff_description": null,
+     "staff_bill": 0,
+     "is_all_course": false,
+     "course_ids": [
+      3101
+     ],
+     "actions": null,
+     "messages": null
+    },
+    {
+     "id": 3202,
+     "staff_name": "佐藤",
+     "is_all_course": true,
+     "course_ids": null
+    }
+   ],
+   "forms": [
+    {
+     "id": 3301,
+     "form_type": "text",
+     "question": "お名前を入力してください",
+     "required": true,
+     "options": null
+    }
+   ],
+   "booking_settings": {
+    "approve_type": "auto",
+    "cancel_type": "auto",
+    "limit_per_customer": 0
+   },
+   "time_free": {
+    "before_minutes": null,
+    "after_minutes": 15
+   },
+   "seasonal": [],
+   "created_at": "2026-10-09 01:00:00",
+   "updated_at": "2026-10-09 01:00:00"
+  },
+  "bookings": [
+   {
+    "id": 900001,
+    "course_id": 3101,
+    "course_name": "移行デモコース（60分）",
+    "staff_id": 3201,
+    "staff_name": "運営者",
+    "date_booking": "2099-10-20 14:00 ~ 15:00",
+    "lmessage_friend_id": 1001,
+    "line_friend_id": "U00000000000000000000000000001001",
+    "user_name": "太郎",
+    "status": "booked",
+    "payment_status": "no_bill",
+    "payment_amount": 5000,
+    "form_answers": [
+     {
+      "question": "お名前",
+      "answer": "太郎"
+     }
+    ],
+    "created_at": "2026-10-09 02:00:00"
+   },
+   {
+    "id": 900002,
+    "course_id": 3101,
+    "staff_id": 3201,
+    "date_booking": "2026-01-20 10:00 ~ 11:00",
+    "lmessage_friend_id": 1001,
+    "status": "admin_booked",
+    "payment_amount": null,
+    "created_at": "2026-01-10 02:00:00"
+   },
+   {
+    "id": 900003,
+    "course_id": 3101,
+    "staff_id": 3201,
+    "date_booking": "2026-10-20 14:00 ~ 15:00",
+    "lmessage_friend_id": null,
+    "line_friend_id": null,
+    "user_name": "移行デモ太郎",
+    "status": "admin_booked",
+    "payment_status": "no_bill",
+    "payment_amount": 5000,
+    "form_answers": [],
+    "created_at": "2026-10-09 01:30:00"
+   }
+  ]
+ }
+]

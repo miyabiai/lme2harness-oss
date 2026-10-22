@@ -1,0 +1,5 @@
+[{"id":8001,"name":"友だち追加時","type":"group","category_id":10,"category_name":"L1_登録","content":"8002,8003","children":[
+  {"id":8002,"type":"text","category_id":0,"content":"こんにちは、[FRIEND_INFO_abc]さん","data":{"type":"text","message_text":{"content":"こんにちは、[FRIEND_INFO_abc]さん"}}},
+  {"id":8003,"type":"image","category_id":0,"content":"https://example.com/welcome.jpg","data":{"type":"image","message_media":{"url":"https://example.com/welcome.jpg","preview_url":"https://example.com/welcome_s.jpg"}}}
+ ]},
+ {"id":8010,"name":"画像テンプレ","type":"image","category_id":10,"category_name":"L1_登録","content":"https://example.com/img2.jpg","data":{"type":"image","message_media":{"url":"https://example.com/img2.jpg"}}}]
