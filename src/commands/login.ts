@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { CONFIG_FILE, loadConfig, updateConfig } from "../config.js";
-import { LmeMcpClient } from "../lme/mcp-client.js";
+import { LmeMcpClient, NeedsLogin } from "../lme/mcp-client.js";
 import { ask, interactive } from "../prompt.js";
 import * as log from "../log.js";
 import type { LmeBot } from "../lme/types.js";
@@ -12,11 +12,23 @@ export const TOKEN_PATH = () => resolve(process.cwd(), ".lme2harness", "mcp-toke
  * エルメ公式 MCP にブラウザでログインし、移行元の bot を設定ファイルに書く。
  * bot が1つならそれを、複数なら番号で選んでもらう（--bot-id で直接指定も可）。
  */
-export async function runLogin(opts: { botId?: string } = {}): Promise<void> {
+export async function runLogin(opts: { botId?: string; browser?: boolean; timeout?: number; relogin?: boolean } = {}): Promise<void> {
   const client = new LmeMcpClient({ tokenPath: TOKEN_PATH() });
-  await client.login();
-  const res = await client.call<{ bots?: LmeBot[] }>("list_bots", {});
-  const bots = res.bots ?? [];
+  // 保存済みのトークンで list_bots が通るなら、ブラウザでのログインは省く（移行元の選び直しだけできる）
+  let bots: LmeBot[] | null = null;
+  if (client.hasToken() && !opts.relogin) {
+    try {
+      bots = (await client.call<{ bots?: LmeBot[] }>("list_bots", {})).bots ?? [];
+      log.info("保存済みのログインが使えるので、ブラウザでのログインは省きます（やり直すときは --relogin）");
+    } catch (e) {
+      if (!(e instanceof NeedsLogin)) throw e;
+      bots = null;
+    }
+  }
+  if (!bots) {
+    await client.login({ openBrowser: opts.browser !== false, timeoutMs: opts.timeout && opts.timeout > 0 ? opts.timeout * 1000 : undefined });
+    bots = (await client.call<{ bots?: LmeBot[] }>("list_bots", {})).bots ?? [];
+  }
   if (!bots.length) {
     log.warn("このログインで使える LINE アカウント（bot）が見つかりませんでした");
     return;
@@ -35,7 +47,7 @@ export async function runLogin(opts: { botId?: string } = {}): Promise<void> {
     chosen = bots[Number(a) - 1];
   }
   if (!chosen) {
-    log.info(`移行元が決まっていません。\`lme2harness login --bot-id <bot_id>\` で選ぶか、${CONFIG_FILE} の lme_bot_id に書いてください`);
+    log.info(`移行元が決まっていません。\`lme2harness login --bot-id <bot_id>\` で選んでください（ログインは済んでいるのでブラウザは開きません）`);
     return;
   }
   if (!existsSync(resolve(process.cwd(), CONFIG_FILE))) {

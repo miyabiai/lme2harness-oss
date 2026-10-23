@@ -18,6 +18,8 @@ export interface HarnessInstall {
   accountId?: string;
   adminUrl?: string;
   version?: string;
+  /** create-line-harness が導入時に保存した API キー（読めたときだけ） */
+  apiKey?: string;
   /** どこから読んだか（表示用） */
   source: string;
 }
@@ -34,6 +36,7 @@ interface SavedConfig {
   adminUrl?: string;
   adminPublicUrl?: string;
   installedVersion?: string;
+  apiKey?: string;
 }
 
 /** 探す順: 指定フォルダ → 今いるフォルダとその親 → ~/.line-harness */
@@ -72,6 +75,7 @@ export function readHarnessInstall(dir: string): HarnessInstall | null {
       accountId: saved.cfAccountId || saved.accountId || fromToml?.accountId,
       adminUrl: saved.adminPublicUrl || saved.adminUrl || fromToml?.adminUrl,
       version: saved.installedVersion,
+      apiKey: typeof saved.apiKey === "string" && saved.apiKey.trim() ? saved.apiKey.trim() : undefined,
       source: configPath,
     };
   }

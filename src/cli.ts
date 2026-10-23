@@ -47,6 +47,9 @@ program
   .command("login")
   .description("エルメ公式 MCP にブラウザでログインし、移行元の LINE アカウントを設定する")
   .option("--bot-id <id>", "移行元の bot_id（複数あるとき）")
+  .option("--no-browser", "ブラウザを自動で開かず URL を表示するだけ（別のパソコンのブラウザで開くとき）")
+  .option("--timeout <sec>", "承認を待つ秒数（既定 300）", (v) => Number(v))
+  .option("--relogin", "保存済みのログインがあってもブラウザでログインし直す")
   .action((o) => runLogin(o).catch(onError));
 
 program

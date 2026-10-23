@@ -90,8 +90,16 @@ function openBrowser(url: string): void {
   }
 }
 
-/** 127.0.0.1 で OAuth のリダイレクトを 1 回だけ受け、クエリを返す（5分で打ち切り）。 */
-function waitForAuthCallback(authUrl: string): Promise<Record<string, string>> {
+export interface LoginOptions {
+  /** false ならブラウザを自動で開かず、URL を表示するだけ（別のパソコンから開くとき） */
+  openBrowser?: boolean;
+  /** 承認を待つ時間（ms）。既定 5 分 */
+  timeoutMs?: number;
+}
+
+/** 127.0.0.1 で OAuth のリダイレクトを 1 回だけ受け、クエリを返す（既定 5 分で打ち切り）。 */
+function waitForAuthCallback(authUrl: string, opts: LoginOptions = {}): Promise<Record<string, string>> {
+  const timeoutMs = opts.timeoutMs ?? 300_000;
   return new Promise<Record<string, string>>((resolve, reject) => {
     const server = createServer((req, res) => {
       const u = new URL(req.url ?? "/", `http://127.0.0.1:${REDIRECT_PORT}`);
@@ -107,14 +115,15 @@ function waitForAuthCallback(authUrl: string): Promise<Record<string, string>> {
     });
     server.on("error", reject);
     server.listen(REDIRECT_PORT, "127.0.0.1", () => {
-      log.info("ブラウザでエルメにログインして承認してください。開かない場合は次の URL を開いてください:");
+      log.info(opts.openBrowser === false ? "次の URL をブラウザで開き、エルメにログインして承認してください:" : "ブラウザでエルメにログインして承認してください。開かない場合は次の URL を開いてください:");
       log.info(`  ${authUrl}`);
-      openBrowser(authUrl);
+      log.info(`  （別のパソコンのブラウザで開くときは、そのパソコンで \`ssh -N -L ${REDIRECT_PORT}:127.0.0.1:${REDIRECT_PORT} <このマシン>\` を先に実行してから開いてください）`);
+      if (opts.openBrowser !== false) openBrowser(authUrl);
     });
     setTimeout(() => {
       server.close();
-      reject(new McpError("5分以内に承認されませんでした"));
-    }, 300_000).unref();
+      reject(new McpError(`${Math.round(timeoutMs / 60_000)}分以内に承認されませんでした`));
+    }, timeoutMs).unref();
   });
 }
 
@@ -187,7 +196,7 @@ export class LmeMcpClient {
   }
 
   /** ブラウザでエルメにログインして認可する（初回・再認可）。 */
-  async login(): Promise<void> {
+  async login(opts: LoginOptions = {}): Promise<void> {
     const store = this.load();
     const ep = await this.endpoints(store);
     const reg = store.registration ?? (await this.register(store));
@@ -208,7 +217,7 @@ export class LmeMcpClient {
         resource: MCP_URL,
       }).toString();
 
-    const callback = await waitForAuthCallback(authUrl);
+    const callback = await waitForAuthCallback(authUrl, opts);
     if (callback.state !== state) throw new McpError("state が一致しません。やり直してください");
     if (callback.error) throw new McpError(`認可エラー: ${callback.error}`);
     const tokenRes = await this.postToken(ep, {
