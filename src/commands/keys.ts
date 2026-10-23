@@ -155,7 +155,7 @@ export async function runKeys(opts: { names?: string[]; for?: string; wait?: boo
   const started = Date.now();
   let lastMtime = statSync(path).mtimeMs;
   let lastReport = "";
-  log.info(`保存されるのを待っています（最大 ${Math.round(timeoutMs / 60000)} 分）…`);
+  log.info(`保存されるのを待っています（最大 ${timeoutMs >= 60000 ? `${Math.round(timeoutMs / 60000)} 分` : `${Math.round(timeoutMs / 1000)} 秒`}）…`);
   while (Date.now() - started < timeoutMs) {
     await sleep(1000);
     if (!existsSync(path)) continue;
