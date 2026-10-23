@@ -109,8 +109,12 @@ function waitForAuthCallback(authUrl: string, opts: LoginOptions = {}): Promise<
         return;
       }
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.end("<h2>認証完了。このタブは閉じて大丈夫です。</h2>");
-      server.close();
+      // ブラウザが接続を保持したままだと server.close() が終わらず、プロセスが残る（ssh 転送越しで実際に起きた）
+      res.setHeader("Connection", "close");
+      res.end("<h2>認証完了。このタブは閉じて大丈夫です。</h2>", () => {
+        server.close();
+        server.closeAllConnections();
+      });
       resolve(Object.fromEntries(u.searchParams.entries()));
     });
     server.on("error", reject);
