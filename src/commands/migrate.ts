@@ -12,7 +12,7 @@ import * as log from "../log.js";
  * 点検 → 取り出し → 変換 → （確認）→ 投入 → 照合 → リッチメニュー取り込み → アイコン取得 を順に流す。
  * 各段は個別コマンドと同じ処理で、途中で止まっても同じコマンドで続きから再開できる。
  */
-export async function runMigrate(opts: { yes?: boolean; enrich: boolean; messages: boolean; resume: boolean; richmenu: boolean }): Promise<void> {
+export async function runMigrate(opts: { yes?: boolean; enrich: boolean; messages: boolean; resume: boolean; richmenu: boolean; parallel?: number }): Promise<void> {
   step("1/7 点検");
   const checks = await runDoctor();
   if (checks.some((c) => !c.ok && c.required !== false)) throw new Error("点検で ✗ があります。上の → の案内どおり直してから、もう一度 `lme2harness migrate`");
@@ -33,7 +33,7 @@ export async function runMigrate(opts: { yes?: boolean; enrich: boolean; message
       return;
     }
   }
-  await runApply({});
+  await runApply({ parallel: opts.parallel });
 
   step("5/7 照合");
   await runVerify({});
