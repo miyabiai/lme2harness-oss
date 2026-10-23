@@ -28,7 +28,7 @@ npx lme2harness migrate    # 点検 → 取り出し → 変換 → 投入 → �
 | L Harness の API キー | セットアップ完了画面に一度だけ出る「API Key」 |
 | エルメのアカウント | `login` でブラウザからログインします |
 
-`init` は L Harness の導入フォルダ（既定の `~/.line-harness`）を自動で探し、Worker の URL・データベース（D1）の名前などを設定ファイルに書き込みます。create-line-harness が導入フォルダに API キーを保存していれば（`.line-harness-config.json`・本人だけ読める権限）、それも読み込むので貼らずに済みます。別の場所に入れた場合は `npx lme2harness init --harness-dir <フォルダ>` で指定してください。
+`init` は L Harness の導入フォルダ（既定の `~/.line-harness`）を自動で探し、Worker の URL・データベース（D1）の名前などを設定ファイルに書き込みます。create-line-harness が導入フォルダの `.line-harness-config.json` に API キーを残していれば読み込みますが、版によっては完了時に消されるので、その場合は完了画面の API Key を貼ります。別の場所に入れた場合は `npx lme2harness init --harness-dir <フォルダ>` で指定してください。
 
 ## 移せるもの
 
@@ -147,6 +147,19 @@ pnpm build
 ```
 
 L Harness v0.24.1 のデータベースの形（`packages/db/bootstrap.sql`）を基準にしています。本番に流す前に `plan --local-schema <bootstrap.sql>` で手元の SQLite に通して確かめられます。
+
+## 変更履歴
+
+### 0.1.1（2026-10-24）
+
+友だち数千人・会話 10 万件規模のエルメを実際に移して見つかった取りこぼしの修正と、遠隔での使い勝手。
+
+- `extract`: MCP のページ送りで `pagination.total` が「そのページの件数」しか返すツール（`get_form_responses`・`list_conversations`）があり、2 ページ目以降を読んでいなかった。limit に満たないページまで読むように変更（数千件あるフォーム回答が 100 件で止まっていた）
+- `extract`: 会話一覧（確認状態・対応ステータス・最終日時）を `conversation_index.json` にマスタと一緒に保存し、`plan` が友だちごとの不足分を補う。対応ステータスは MCP の `handling_status_id` / `handling_status_name` を読む（今まで全員「無し」になっていた）
+- `plan`: ステップ配信の開始・停止・空ステップの記録（`message_type=scenario` の JSON 文字列・`stop_scenario`・`scenario_empty_step`）を会話に入れない。本文が空の送信記録も入れず、件数をレポートに出す
+- `plan`: ボタン型（カード）メッセージをタイトル・本文・ボタン名の文字メッセージにする（今まで JSON のままだった）
+- `login`: 保存済みのログインが使えるときはブラウザを開かない（`--relogin` で再ログイン、`--bot-id` で移行元の選び直しだけ）。`--no-browser` / `--timeout` で、別のパソコンのブラウザから承認できる（ssh のポート転送 8976）。承認後にブラウザの接続を閉じ、プロセスが残らないようにした
+- `init`: 導入フォルダの `.line-harness-config.json` に API キーが残っていれば読み込む（create-line-harness の版によっては完了時に消されるので、無ければ従来どおり貼る）
 
 ## 免責
 
