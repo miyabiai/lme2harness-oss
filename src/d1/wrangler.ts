@@ -63,8 +63,25 @@ async function d1Execute(extraArgs: string[], opts: WranglerD1Options): Promise<
   return r.stdout;
 }
 
-export async function d1ExecuteFile(file: string, opts: WranglerD1Options): Promise<void> {
-  await d1Execute(["--file", file, "--yes"], opts);
+/** Cloudflare 側の一時的な失敗（アップロード失敗・内部エラー・5xx）か。再試行で通ることが多い */
+export function isTransientD1Error(message: string): boolean {
+  return /Please retry|InternalError|internal error|<Code>5\d\d<\/Code>|HTTP 5\d\d|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i.test(message);
+}
+
+/** 1 ファイルを流す。一時的な失敗は少し待って最大 3 回まで再試行する（大量のファイル投入で実際に 1 回起きた）。 */
+export async function d1ExecuteFile(file: string, opts: WranglerD1Options, retries = 3, waitMs = [5_000, 15_000, 30_000]): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await d1Execute(["--file", file, "--yes"], opts);
+      return;
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (attempt >= retries || !isTransientD1Error(msg)) throw e;
+      const wait = waitMs[Math.min(attempt, waitMs.length - 1)];
+      log.warn(`D1 の一時的な失敗なので ${Math.round(wait / 1000)} 秒待って再試行します (${attempt + 1}/${retries}): ${msg.split("\n").find((l) => /ERROR|Error|error/.test(l))?.trim().slice(0, 160) ?? msg.split("\n")[0]}`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
 }
 
 export async function d1Query(sql: string, opts: WranglerD1Options): Promise<Array<Record<string, unknown>>> {
