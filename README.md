@@ -11,7 +11,7 @@ npx lme2harness login      # ブラウザでエルメにログイン
 npx lme2harness migrate    # 点検 → 取り出し → 変換 → 投入 → 照合 まで一気に
 ```
 
-**コマンドを打たずに移したいとき**は、Claude Code か Codex のチャット欄にメッセージを貼って送るだけで進められます → [コピペで移行](docs/コピペで移行.md)
+**コマンドを打たずに移したいとき**は、Claude Code か Codex のチャット欄にメッセージを1回貼って送るだけ。あとは AI とやり取りするだけで終わります → [コピペで移行](docs/コピペで移行.md)
 
 - エルメ公式の口（公式 MCP・公開 API）だけを使います。画面の自動操作はしません
 - 何度実行しても同じ結果になります。途中で止まっても、同じコマンドで続きから再開できます
@@ -61,6 +61,7 @@ npx lme2harness migrate    # 点検 → 取り出し → 変換 → 投入 → �
 
 ```bash
 npx lme2harness init       # 設定ファイルと .env を作り、API キーを聞かれたら貼る
+npx lme2harness keys       # （聞かれなかったとき）.env をテキストエディットで開くので、API キーを貼って保存
 npx lme2harness login      # ブラウザが開くのでエルメにログイン → 移行元のアカウントが自動で設定される
 npx lme2harness doctor     # 準備ができているか点検（何も書き換えません）
 ```

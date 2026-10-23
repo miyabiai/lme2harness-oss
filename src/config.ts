@@ -116,8 +116,9 @@ export function loadDotEnv(cwd = process.cwd(), file = ".env"): Record<string, s
     const i = t.indexOf("=");
     if (i <= 0) continue;
     const k = t.slice(0, i).trim();
-    let v = t.slice(i + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    // テキストエディットで貼ると全角空白や “ ” が混ざることがあるので外す
+    let v = t.slice(i + 1).replace(/^[\s\u3000]+|[\s\u3000]+$/g, "");
+    if (/^(["'“‘]).*(["'”’])$/.test(v)) v = v.slice(1, -1);
     out[k] = v;
   }
   return out;

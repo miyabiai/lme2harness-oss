@@ -97,7 +97,7 @@ MAX_CLOCK_SKEW_SECONDS = "300"
   if (opts.deploy) {
     requireHarness(env);
     const channelSecret = env.secrets.LINE_CHANNEL_SECRET;
-    if (!channelSecret) throw new Error("LINE_CHANNEL_SECRET（.env）が空です。LINE Developers の Messaging API チャネルのシークレットを貼ってください");
+    if (!channelSecret) throw new Error("LINE_CHANNEL_SECRET（.env）が空です。`lme2harness keys --for bridge` でテキストエディットを開き、LINE Developers の Messaging API チャネルのシークレットを貼ってください");
     const extra = env.secrets.LME_WEBHOOK_SECRET ?? "";
     if (!extra) log.warn("LME_WEBHOOK_SECRET（.env）が空です。エルメの「Webhook転送」画面のシークレットを貼ってから再実行すると L Message 転送も受けられます");
     const cfEnv = cloudflareEnv(env.secrets);

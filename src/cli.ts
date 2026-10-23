@@ -12,6 +12,7 @@ import { runBridge } from "./commands/bridge.js";
 import { runDoctorCli } from "./commands/doctor.js";
 import { runMigrate } from "./commands/migrate.js";
 import { runRichMenu } from "./commands/richmenu.js";
+import { runKeys } from "./commands/keys.js";
 import { createRequire } from "node:module";
 
 const pkg = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -32,6 +33,15 @@ program
   .option("--harness-dir <path>", "L Harness の導入フォルダ（既定は自動で探す: ./line-harness, ~/.line-harness など）")
   .option("-y, --yes", "質問しない（API キーの入力を飛ばす）")
   .action((o) => runInit(o).catch(onError));
+
+program
+  .command("keys [names...]")
+  .description("API キーなどの秘密の値を貼るため、.env をテキストエディット（Windows はメモ帳）で開き、保存されるまで待つ（値は表示しない）")
+  .option("--for <stage>", "段階で選ぶ: migrate（L Harness の API キー）/ bridge（チャネルシークレット・署名シークレット）")
+  .option("--no-wait", "開くだけで待たない")
+  .option("--no-editor", "エディタを開かない（.env を書き直して待つだけ）")
+  .option("--timeout <sec>", "待つ秒数（既定 600）", (v) => Number(v))
+  .action((names: string[], o) => runKeys({ ...o, names }).catch(onError));
 
 program
   .command("login")

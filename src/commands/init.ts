@@ -69,6 +69,7 @@ export async function runInit(opts: { harnessUrl?: string; botId?: string; harne
   if (missing.length) {
     log.info(`  ${n++}. 未設定の項目を埋める`);
     for (const m of missing) log.info(`       - ${m}`);
+    if (!loadDotEnv(cwd).HARNESS_API_KEY) log.info("       （API キーは `lme2harness keys` でテキストエディットが開くので、そこに貼って保存）");
   }
   log.info(`  ${n++}. lme2harness login     … エルメにログイン（bot は自動で設定されます）`);
   log.info(`  ${n++}. lme2harness doctor    … 準備ができているか点検`);
