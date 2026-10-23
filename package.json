@@ -1,6 +1,6 @@
 {
   "name": "lme2harness",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "L Message（エルメ）から L Harness（line-harness-oss）へ顧客データを移行し、並行運用ブリッジを提供する CLI",
   "license": "MIT",
   "repository": {
