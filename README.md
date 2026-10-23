@@ -28,7 +28,7 @@ npx lme2harness migrate    # 点検 → 取り出し → 変換 → 投入 → �
 | L Harness の API キー | セットアップ完了画面に一度だけ出る「API Key」 |
 | エルメのアカウント | `login` でブラウザからログインします |
 
-`init` は L Harness の導入フォルダ（既定の `~/.line-harness`）を自動で探し、Worker の URL・データベース（D1）の名前などを設定ファイルに書き込みます。別の場所に入れた場合は `npx lme2harness init --harness-dir <フォルダ>` で指定してください。
+`init` は L Harness の導入フォルダ（既定の `~/.line-harness`）を自動で探し、Worker の URL・データベース（D1）の名前などを設定ファイルに書き込みます。create-line-harness が導入フォルダに API キーを保存していれば（`.line-harness-config.json`・本人だけ読める権限）、それも読み込むので貼らずに済みます。別の場所に入れた場合は `npx lme2harness init --harness-dir <フォルダ>` で指定してください。
 
 ## 移せるもの
 
@@ -65,6 +65,8 @@ npx lme2harness keys       # （聞かれなかったとき）.env をテキス�
 npx lme2harness login      # ブラウザが開くのでエルメにログイン → 移行元のアカウントが自動で設定される
 npx lme2harness doctor     # 準備ができているか点検（何も書き換えません）
 ```
+
+`login` は保存済みのログインが使えるときはブラウザを開きません（移行元を選び直すときは `login --bot-id <bot_id>`、ログインし直すときは `login --relogin`）。移行を別のパソコン（サーバーや遠隔の Mac）で動かしていて、ブラウザは手元のパソコンで開きたいときは `npx lme2harness login --no-browser --timeout 3600` で URL だけ表示させ、手元のパソコンで `ssh -N -L 8976:127.0.0.1:8976 <移行を動かしているマシン>` を実行してから、その URL を手元のブラウザで開いてください（承認後の戻り先が 127.0.0.1:8976 なので、転送が要ります）。
 
 `doctor` が ✗ を出したら、すぐ下の「→」の案内どおりに直してください。よくあるのは次の 2 つです。
 

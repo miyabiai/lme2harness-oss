@@ -49,7 +49,12 @@ export async function runInit(opts: { harnessUrl?: string; botId?: string; harne
     log.info(".env を作りました（git には入れないでください）");
   }
 
-  // API キーはセットアップ完了画面に一度だけ出る値。端末なら貼ってもらう（画面には出さない）
+  // API キーは create-line-harness が導入フォルダの設定（本人だけ読める 0600）にも保存している。読めたら貼らずに済ませる
+  if (!loadDotEnv(cwd).HARNESS_API_KEY && install?.apiKey) {
+    setDotEnvValue("HARNESS_API_KEY", install.apiKey, cwd);
+    log.info(`  .env に HARNESS_API_KEY を保存しました（${install.source} から読み込み・${install.apiKey.length}文字）`);
+  }
+  // 読めなければセットアップ完了画面に一度だけ出た値を、端末なら貼ってもらう（画面には出さない）
   if (!loadDotEnv(cwd).HARNESS_API_KEY && interactive() && !opts.yes) {
     const key = await ask("L Harness の API キーを貼ってください（セットアップ完了画面の「API Key」。Enter で後回し）: ", { secret: true });
     if (key) {

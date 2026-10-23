@@ -29,7 +29,7 @@ function makeInstall(root: string, withConfig: boolean): string {
   if (withConfig) {
     writeFileSync(
       join(dir, ".line-harness-config.json"),
-      JSON.stringify({ workerName: "acme-line-harness", d1DatabaseName: "acme-line-harness", d1DatabaseId: "d1-uuid", workerPublicUrl: "https://from-config.workers.dev", installedVersion: "0.24.1" }),
+      JSON.stringify({ workerName: "acme-line-harness", d1DatabaseName: "acme-line-harness", d1DatabaseId: "d1-uuid", workerPublicUrl: "https://from-config.workers.dev", installedVersion: "0.24.1", apiKey: "lh_test_key_1234" }),
     );
   }
   return dir;
@@ -50,6 +50,13 @@ describe("L Harness の導入フォルダ検出", () => {
     expect(hit?.workerUrl).toBe("https://from-config.workers.dev");
     expect(hit?.d1DatabaseId).toBe("d1-uuid");
     expect(hit?.version).toBe("0.24.1");
+    expect(hit?.apiKey).toBe("lh_test_key_1234");
+  });
+
+  it("設定ファイルに API キーが無ければ apiKey は undefined", () => {
+    const root = mkdtempSync(join(tmpdir(), "l2h-"));
+    const dir = makeInstall(root, false);
+    expect(findHarnessInstall(dir, root, "")?.apiKey).toBeUndefined();
   });
 
   it("設定ファイルが無くても wrangler.toml だけで見つかる", () => {
