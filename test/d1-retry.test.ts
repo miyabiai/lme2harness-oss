@@ -6,6 +6,7 @@ describe("D1 の一時的な失敗の判定", () => {
     expect(isTransientD1Error("✘ [ERROR] File could not be uploaded. Please retry.\n<Error><Code>InternalError</Code></Error>")).toBe(true);
     expect(isTransientD1Error("A request to the Cloudflare API failed. HTTP 503")).toBe(true);
     expect(isTransientD1Error("fetch failed")).toBe(true);
+    expect(isTransientD1Error("✘ [ERROR] Network connection lost.")).toBe(true);
   });
   it("SQL の誤り・認証エラーは再試行しない", () => {
     expect(isTransientD1Error("no such table: friends: SQLITE_ERROR [code: 7500]")).toBe(false);

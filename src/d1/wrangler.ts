@@ -65,7 +65,7 @@ async function d1Execute(extraArgs: string[], opts: WranglerD1Options): Promise<
 
 /** Cloudflare 側の一時的な失敗（アップロード失敗・内部エラー・5xx）か。再試行で通ることが多い */
 export function isTransientD1Error(message: string): boolean {
-  return /Please retry|InternalError|internal error|<Code>5\d\d<\/Code>|HTTP 5\d\d|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i.test(message);
+  return /Please retry|InternalError|internal error|<Code>5\d\d<\/Code>|HTTP 5\d\d|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed|Network connection lost|network error|ENOTFOUND|EAI_AGAIN/i.test(message);
 }
 
 /** 1 ファイルを流す。一時的な失敗は少し待って最大 3 回まで再試行する（龍崎の 562 ファイル投入で実際に 1 回起きた）。 */
