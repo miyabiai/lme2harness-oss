@@ -13,6 +13,9 @@
  *     → D1 で友だちを引き、L Harness API でタグ付け/解除・メタデータ更新
  *
  * 10秒以内に 2xx を返す（エルメ側の要件）。重い処理は waitUntil で続ける。
+ *
+ * LINE 転送には署名が付かない（エルメの仕様）。受信パスのトークンが唯一の鍵なので、
+ * X-Lme-Timestamp が古いもの（盗み見た通信の使い回し）も受け付けない。
  */
 
 export interface Env {
@@ -28,6 +31,10 @@ export interface Env {
   HARNESS_API_KEY: string;
   LME_WEBHOOK_SECRET?: string;
   LME_WEBHOOK_SECRET_PREVIOUS?: string;
+  /** 旧シークレットを受け付ける期限（エポックミリ秒）。無いか過ぎていれば旧シークレットは使わない */
+  LME_WEBHOOK_SECRET_PREVIOUS_UNTIL?: string;
+  /** X-Lme-Timestamp と今の時刻のずれの許容（秒）。既定 300。"0" で確認しない */
+  MAX_CLOCK_SKEW_SECONDS?: string;
   LME_API_KEY?: string;
   PATH_TOKEN_LINE: string;
   PATH_TOKEN_LMESSAGE: string;
@@ -35,6 +42,7 @@ export interface Env {
 
 const TOKEN_RE = /^[A-Za-z0-9]{32,128}$/;
 const TAG_NAME_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_MAX_CLOCK_SKEW_SECONDS = 300;
 
 interface LmeEvent {
   lmessage_friend_id?: number;
@@ -57,6 +65,24 @@ async function hmacSha256Base64(secret: string, body: ArrayBuffer): Promise<stri
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, body);
   return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+
+/** X-Lme-Timestamp（エポックミリ秒）が今から許容範囲内か。エルメは再送のたびに新しい値を入れる */
+export function freshTimestamp(env: Env, header: string | null, now = Date.now()): boolean {
+  const skew = Number(env.MAX_CLOCK_SKEW_SECONDS ?? DEFAULT_MAX_CLOCK_SKEW_SECONDS);
+  if (Number.isFinite(skew) && skew <= 0) return true;
+  const limitMs = (Number.isFinite(skew) ? skew : DEFAULT_MAX_CLOCK_SKEW_SECONDS) * 1000;
+  if (!header || !/^\d{10,16}$/.test(header)) return false;
+  return Math.abs(now - Number(header)) <= limitMs;
+}
+
+/** 今受け付ける L Message 転送の署名シークレット。旧シークレットは期限内だけ */
+export function acceptedLmeSecrets(env: Env, now = Date.now()): string[] {
+  const secrets: string[] = [];
+  if (env.LME_WEBHOOK_SECRET) secrets.push(env.LME_WEBHOOK_SECRET);
+  const until = Number(env.LME_WEBHOOK_SECRET_PREVIOUS_UNTIL);
+  if (env.LME_WEBHOOK_SECRET_PREVIOUS && Number.isFinite(until) && now < until) secrets.push(env.LME_WEBHOOK_SECRET_PREVIOUS);
+  return secrets;
 }
 
 async function alreadySeen(env: Env, deliveryId: string | null): Promise<boolean> {
@@ -201,14 +227,15 @@ export default {
     const [, channel, token] = m;
     const expected = channel === "line" ? env.PATH_TOKEN_LINE : env.PATH_TOKEN_LMESSAGE;
     if (!expected || !TOKEN_RE.test(expected) || !timingSafeEqual(token, expected)) return new Response("not found", { status: 404 });
+    if (!freshTimestamp(env, request.headers.get("X-Lme-Timestamp"))) return json(401, { ok: false, error: "X-Lme-Timestamp が無いか古すぎます" });
 
     const deliveryId = request.headers.get("X-Lme-Delivery-Id");
     if (await alreadySeen(env, deliveryId)) return json(200, { ok: true, duplicate: true });
 
     if (channel === "lmessage") {
       const sig = request.headers.get("X-Lme-Signature") ?? "";
-      const secrets = [env.LME_WEBHOOK_SECRET, env.LME_WEBHOOK_SECRET_PREVIOUS].filter((s): s is string => Boolean(s));
-      if (secrets.length === 0) return json(503, { ok: false, error: "LME_WEBHOOK_SECRET 未設定" });
+      if (!env.LME_WEBHOOK_SECRET) return json(503, { ok: false, error: "LME_WEBHOOK_SECRET 未設定" });
+      const secrets = acceptedLmeSecrets(env);
       if (!secrets.some((s) => timingSafeEqual(sig, s))) return json(401, { ok: false, error: "署名不一致" });
       let payload: { events?: LmeEvent[] };
       try {

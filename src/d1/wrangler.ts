@@ -16,15 +16,18 @@ export interface WranglerD1Options {
   /** --remote（既定）/ --local */
   remote?: boolean;
   env?: Record<string, string>;
-  /** wrangler の起動コマンド（既定 npx --yes wrangler） */
+  /** wrangler の起動コマンド（既定 npx --yes wrangler@WRANGLER_VERSION） */
   command?: string[];
 }
 
-/** dir に入っている wrangler があればそれを、無ければ npx で起動するコマンド。 */
+/** npx で取ってくる wrangler の版。最新版をその場で取らないよう固定する（bridge/package.json と揃える） */
+export const WRANGLER_VERSION = "4.150.0";
+
+/** dir に入っている wrangler があればそれを、無ければ版を固定して npx で起動するコマンド。 */
 export function localWranglerCommand(dir?: string): string[] {
   const bin = dir ? join(dir, "node_modules", ".bin", "wrangler") : null;
   if (bin && existsSync(bin)) return [bin];
-  return ["npx", "--yes", "wrangler"];
+  return ["npx", "--yes", `wrangler@${WRANGLER_VERSION}`];
 }
 
 function wranglerCommand(opts: WranglerD1Options): string[] {

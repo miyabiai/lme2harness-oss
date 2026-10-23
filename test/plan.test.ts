@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { SnapshotStore } from "../src/snapshot/store.js";
 import { buildPlan, writePlan } from "../src/mapping/plan.js";
@@ -152,6 +152,28 @@ describe("plan → D1 へ流せる SQL になる", () => {
     expect(manifest.counts.friends).toBe(2);
     expect(manifest.counts.forms).toBe(1); // 回答数の更新行を二重に数えない
     expect(Object.keys(manifest.reports)).toContain("rich_menus");
+  });
+
+  it.skipIf(process.platform === "win32")("out/ と snapshot/ は本人だけが読める権限で書く（上書きでも直す）", () => {
+    const mode = (p: string) => statSync(p).mode & 0o777;
+    const { ctx, rowsByTable } = plan();
+    const out = mkdtempSync(resolve(tmpdir(), "lme2harness-"));
+    chmodSync(out, 0o755);
+    writeFileSync(resolve(out, "report.md"), "古いレポート", { mode: 0o644 });
+    const manifest = writePlan(out, ctx, rowsByTable, new SnapshotStore(FIXTURE));
+    expect(mode(out)).toBe(0o700);
+    expect(mode(resolve(out, "sql"))).toBe(0o700);
+    expect(mode(resolve(out, "report.md"))).toBe(0o600);
+    expect(mode(resolve(out, "plan.json"))).toBe(0o600);
+    expect(mode(resolve(out, manifest.chunks[0].file))).toBe(0o600);
+
+    const snapDir = resolve(mkdtempSync(resolve(tmpdir(), "lme2harness-snap-")), "snapshot");
+    const snap = new SnapshotStore(snapDir);
+    snap.writeJson("form_responses/1.json", { answers: [] });
+    expect(mode(snapDir)).toBe(0o700);
+    expect(mode(resolve(snapDir, "friends"))).toBe(0o700);
+    expect(mode(resolve(snapDir, "form_responses"))).toBe(0o700);
+    expect(mode(resolve(snapDir, "form_responses/1.json"))).toBe(0o600);
   });
 });
 

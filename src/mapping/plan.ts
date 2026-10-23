@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensurePrivateDir, writePrivateFile } from "../util.js";
 import type { SnapshotStore } from "../snapshot/store.js";
 import { PlanContext, type EntityReport } from "./context.js";
 import { mapAutoReplies, mapScenarios, mapTags, mapTemplates, mapTrafficSources, mapWelcome, templateTextById } from "./masters.js";
@@ -92,7 +92,9 @@ function noteUnmigrated(store: SnapshotStore, ctx: PlanContext): void {
 }
 
 export function writePlan(outDir: string, ctx: PlanContext, rowsByTable: Map<string, Row[]>, store: SnapshotStore): PlanManifest {
-  mkdirSync(join(outDir, "sql"), { recursive: true });
+  // 生成物には顧客の名前・会話・回答が入るので、本人だけが読めるようにする
+  ensurePrivateDir(outDir);
+  ensurePrivateDir(join(outDir, "sql"));
   const chunks: PlanManifest["chunks"] = [];
   const counts: Record<string, number> = {};
   let seq = 0;
@@ -106,16 +108,16 @@ export function writePlan(outDir: string, ctx: PlanContext, rowsByTable: Map<str
     const sqlChunks: SqlChunk[] = chunkStatements(statements, `${String(++seq).padStart(2, "0")}_${table}`);
     for (const c of sqlChunks) {
       const file = join("sql", c.name);
-      writeFileSync(join(outDir, file), c.statements.join("\n") + "\n");
+      writePrivateFile(join(outDir, file), c.statements.join("\n") + "\n");
       chunks.push({ file, table, statements: c.statements.length, bytes: c.bytes });
     }
   }
   // 手動対応用の書き出し
   const rich = store.readJson<unknown>("rich_menus.json");
-  if (rich) writeFileSync(join(outDir, "rich_menus.json"), JSON.stringify(rich, null, 2));
+  if (rich) writePrivateFile(join(outDir, "rich_menus.json"), JSON.stringify(rich, null, 2));
   const salons = store.readJson<unknown>("salons.json");
   const lessons = store.readJson<unknown>("lesson_calendars.json");
-  if (salons || lessons) writeFileSync(join(outDir, "bookings.json"), JSON.stringify({ salons, lessons }, null, 2));
+  if (salons || lessons) writePrivateFile(join(outDir, "bookings.json"), JSON.stringify({ salons, lessons }, null, 2));
 
   const manifest: PlanManifest = {
     generated_at: ctx.now,
@@ -125,8 +127,8 @@ export function writePlan(outDir: string, ctx: PlanContext, rowsByTable: Map<str
     reports: Object.fromEntries(ctx.reports),
     warnings: ctx.warnings,
   };
-  writeFileSync(join(outDir, "plan.json"), JSON.stringify(manifest, null, 2));
-  writeFileSync(join(outDir, "report.md"), renderReport(manifest));
+  writePrivateFile(join(outDir, "plan.json"), JSON.stringify(manifest, null, 2));
+  writePrivateFile(join(outDir, "report.md"), renderReport(manifest));
   return manifest;
 }
 

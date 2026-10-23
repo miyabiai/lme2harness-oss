@@ -130,6 +130,7 @@ export interface Secrets {
   CLOUDFLARE_ACCOUNT_ID?: string;
   LINE_CHANNEL_SECRET?: string;
   LME_WEBHOOK_SECRET?: string;
+  LME_WEBHOOK_SECRET_PREVIOUS?: string;
 }
 
 export function loadSecrets(cwd = process.cwd()): Secrets {
@@ -141,6 +142,7 @@ export function loadSecrets(cwd = process.cwd()): Secrets {
     CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID,
     LINE_CHANNEL_SECRET: env.LINE_CHANNEL_SECRET,
     LME_WEBHOOK_SECRET: env.LME_WEBHOOK_SECRET,
+    LME_WEBHOOK_SECRET_PREVIOUS: env.LME_WEBHOOK_SECRET_PREVIOUS,
   };
 }
 
@@ -154,6 +156,8 @@ HARNESS_API_KEY=
 LINE_CHANNEL_SECRET=
 # エルメ「Webhook転送」画面の署名シークレット（whsec_ で始まる）
 LME_WEBHOOK_SECRET=
+# （シークレットを再生成したときだけ）前のシークレット。bridge --deploy 後の2分だけ受け付ける。済んだら消す
+LME_WEBHOOK_SECRET_PREVIOUS=
 # （任意）wrangler のログインを使わず D1 に書き込む場合のみ
 CLOUDFLARE_API_TOKEN=
 CLOUDFLARE_ACCOUNT_ID=

@@ -27,12 +27,16 @@ HARNESS_URL = "https://your-line-harness.workers.dev"
 STRIP_REPLY_TOKEN = "1"
 # エルメの友だち情報（friend_info）を L Harness の metadata に反映する。既定 "1"
 SYNC_FRIEND_INFO = "1"
+# X-Lme-Timestamp と今の時刻のずれの許容（秒）。古い通信の使い回しを断る。既定 300、"0" で確認しない
+MAX_CLOCK_SKEW_SECONDS = "300"
 
 # 秘密は wrangler secret put で入れる（wrangler.toml に書かない）:
 #   LINE_CHANNEL_SECRET   … LINE Messaging API のチャネルシークレット（署名の付け直しに使う）
 #   HARNESS_API_KEY       … L Harness の API キー
 #   LME_WEBHOOK_SECRET    … エルメ「Webhook転送」画面の署名シークレット（whsec_…）
-#   LME_WEBHOOK_SECRET_PREVIOUS … 再生成時の旧シークレット（任意・2分だけ受け付ける）
+#   LME_WEBHOOK_SECRET_PREVIOUS … 再生成時の旧シークレット（任意）
+#   LME_WEBHOOK_SECRET_PREVIOUS_UNTIL … 旧シークレットを受け付ける期限（エポックミリ秒）。無いか過ぎていれば旧シークレットは断る
+#     （lme2harness bridge --deploy が「登録した時刻＋2分」を自動で入れる）
 #   LME_API_KEY           … エルメ公開APIキー（タグ名の解決に使う。任意）
 #   PATH_TOKEN_LINE       … 受信パスの推測防止トークン（48桁以上の英数字）
 #   PATH_TOKEN_LMESSAGE   … 同上（別の値）

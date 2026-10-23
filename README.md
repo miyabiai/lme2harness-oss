@@ -96,6 +96,10 @@ npx lme2harness bridge --deploy
 
 表示された 2 つの URL を、エルメ管理画面の「Webhook転送」に設定して有効にしてください（反映まで約1分）。「L Messageデータ転送」の **署名シークレット** を `.env` の `LME_WEBHOOK_SECRET` に貼り、もう一度 `bridge --deploy` を実行します。
 
+- **2 つの URL は人に見せないでください。** エルメの「LINE公式アカウントデータ転送」には署名が付かないため、URL の末尾のトークンだけが鍵です。漏れたら `.lme2harness/bridge.json` を消して `bridge --deploy` をやり直すと、新しい URL になります。
+- ブリッジは `X-Lme-Timestamp`（エルメの送信時刻）が今から 5 分以上ずれた通信を断ります（盗み見た通信の使い回し対策。`MAX_CLOCK_SKEW_SECONDS` で変更可）。
+- 署名シークレットを再生成したときは、新しい値を `LME_WEBHOOK_SECRET`、前の値を `LME_WEBHOOK_SECRET_PREVIOUS` に貼って `bridge --deploy` します。前の値は登録から 2 分だけ受け付け、その後は断ります。済んだら `.env` の `LME_WEBHOOK_SECRET_PREVIOUS` は消してください。
+
 ```
 LINE → エルメ ──(LINE公式アカウントデータ転送)──→ ブリッジ ──→ L Harness（メッセージ・友だち追加）
            └──(L Messageデータ転送)──────────→ ブリッジ ──→ L Harness（タグの付け外し・友だち情報）
@@ -126,6 +130,8 @@ LINE → エルメ ──(LINE公式アカウントデータ転送)──→ ブ
 - 既に L Harness にいる友だちの表示名・アイコンは上書きせず、エルメ由来の情報とタグだけ足します
 - L Harness でシナリオを有効にした後は、再実行しても進行状態を上書きしません
 - API キーなどの秘密はログに出しません。`.env` と `.lme2harness/` は人に渡さないでください
+- `snapshot/` と `out/` には顧客の名前・会話・フォーム回答が入るので、本人だけが読める権限（フォルダ 0700・ファイル 0600）で書きます。移行が終わったら消してください
+- wrangler が手元に無いときは、版を固定して `npx wrangler@<版>` で起動します（最新版をその場で取ってこない）
 
 ## 開発
 

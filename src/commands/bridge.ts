@@ -8,6 +8,9 @@ import { localWranglerCommand } from "../d1/wrangler.js";
 import { readJsonFile } from "../util.js";
 import * as log from "../log.js";
 
+/** 再生成前の旧シークレットを受け付ける時間（エルメの推奨は約2分） */
+const PREVIOUS_SECRET_GRACE_MS = 2 * 60 * 1000;
+
 interface BridgeState {
   path_token_line: string;
   path_token_lmessage: string;
@@ -87,6 +90,7 @@ service = "${harnessWorker}"
 HARNESS_URL = "${env.config.harness_url}"
 STRIP_REPLY_TOKEN = "1"
 SYNC_FRIEND_INFO = "1"
+MAX_CLOCK_SKEW_SECONDS = "300"
 `;
   writeFileSync(join(bridgeDir, "wrangler.toml"), toml);
 
@@ -112,6 +116,15 @@ SYNC_FRIEND_INFO = "1"
       if (!v) continue;
       log.info(`  secret ${k}`);
       await run(wr[0], [...wr.slice(1), "secret", "put", k], bridgeDir, v, cfEnv);
+    }
+    // シークレットを再生成した直後は、エルメが最大約1分は旧シークレットで送ってくる。
+    // 旧シークレットは「新しいシークレットを登録した時刻＋2分」だけ受け付ける
+    const previous = env.secrets.LME_WEBHOOK_SECRET_PREVIOUS;
+    if (previous && extra) {
+      log.info("  secret LME_WEBHOOK_SECRET_PREVIOUS（2分だけ有効）");
+      await run(wr[0], [...wr.slice(1), "secret", "put", "LME_WEBHOOK_SECRET_PREVIOUS"], bridgeDir, previous, cfEnv);
+      await run(wr[0], [...wr.slice(1), "secret", "put", "LME_WEBHOOK_SECRET_PREVIOUS_UNTIL"], bridgeDir, String(Date.now() + PREVIOUS_SECRET_GRACE_MS), cfEnv);
+      log.info("  旧シークレットは2分後に自動で断るようになります。.env の LME_WEBHOOK_SECRET_PREVIOUS は消してください");
     }
   }
 

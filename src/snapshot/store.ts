@@ -1,17 +1,19 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { LmeFriendSnapshot, SnapshotMeta } from "../lme/types.js";
-import { readJsonFile } from "../util.js";
+import { ensurePrivateDir, readJsonFile, writePrivateFile } from "../util.js";
 
 /**
  * スナップショットはディレクトリ構造の JSON。
  *   meta.json / tags.json / fields.json / ... （マスタ）
  *   friends/index.json（一覧）、friends/<lmessage_friend_id>.json（1人分）
  * 1人1ファイルにしているのは、途中で止めても続きから再開できるようにするため。
+ * 顧客データなので、フォルダは 0700・ファイルは 0600（本人だけが読める）で作る。
  */
 export class SnapshotStore {
   constructor(readonly dir: string) {
-    mkdirSync(join(dir, "friends"), { recursive: true });
+    ensurePrivateDir(dir);
+    ensurePrivateDir(join(dir, "friends"));
   }
 
   private path(name: string): string {
@@ -20,9 +22,9 @@ export class SnapshotStore {
 
   writeJson(name: string, data: unknown): void {
     const p = this.path(name);
-    mkdirSync(dirname(p), { recursive: true });
+    ensurePrivateDir(dirname(p));
     const tmp = `${p}.tmp`;
-    writeFileSync(tmp, JSON.stringify(data, null, 1));
+    writePrivateFile(tmp, JSON.stringify(data, null, 1));
     renameSync(tmp, p);
   }
 
