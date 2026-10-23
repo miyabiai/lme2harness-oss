@@ -1,6 +1,6 @@
 import type { LmeSource } from "../lme/source.js";
 import type { SnapshotStore } from "./store.js";
-import type { LmeBot, LmeFriendRow, SnapshotMeta } from "../lme/types.js";
+import type { LmeBot, LmeConversationIndexEntry, LmeFriendRow, SnapshotMeta } from "../lme/types.js";
 import * as log from "../log.js";
 import { chunked } from "../util.js";
 
@@ -122,6 +122,15 @@ async function extractMasters(source: LmeSource, store: SnapshotStore, meta: Sna
   } else {
     meta.notes.push("フォーム・自動応答・あいさつ・リッチメニュー・流入経路・予約・商品は MCP でのみ取得できます");
   }
+  // 会話一覧（確認状態・対応ステータス・最終メッセージ日時）は友だち 1 人ずつの取り出しとは別に
+  // 全員分をここで保存し、plan が conversation_index.json から補う（友だちを取り直さなくても最新にできる）
+  await extractConversationIndex(source, store);
+}
+
+async function extractConversationIndex(source: LmeSource, store: SnapshotStore): Promise<Map<number, LmeConversationIndexEntry> | null> {
+  const convIndex = await step("会話一覧（確認状態・対応ステータス）", () => source.conversationIndex());
+  if (convIndex) store.writeJson("conversation_index.json", Object.fromEntries(convIndex));
+  return convIndex;
 }
 
 async function extractFriends(source: LmeSource, store: SnapshotStore, meta: SnapshotMeta, opts: ExtractOptions): Promise<void> {
@@ -137,8 +146,8 @@ async function extractFriends(source: LmeSource, store: SnapshotStore, meta: Sna
   meta.friend_total = rows.length;
   log.info(`  ✓ 友だち ${rows.length}人`);
 
-  const convIndex = await step("会話一覧（確認状態・対応ステータス）", () => source.conversationIndex());
-  if (convIndex) store.writeJson("conversation_index.json", Object.fromEntries(convIndex));
+  const saved = store.readJson<Record<string, LmeConversationIndexEntry>>("conversation_index.json");
+  const convIndex = saved && opts.only === "friends" ? new Map(Object.entries(saved).map(([k, v]) => [Number(k), v])) : await extractConversationIndex(source, store);
 
   const pending = rows.filter((r) => !(opts.resume && store.hasFriend(r.lmessage_friend_id)));
   log.info(`友だちの詳細${opts.messages ? "と会話履歴" : ""}を取得します（残り ${pending.length}人）`);

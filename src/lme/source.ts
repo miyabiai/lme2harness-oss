@@ -6,6 +6,7 @@ import type {
   LmeAutoReply,
   LmeBot,
   LmeConversation,
+  LmeConversationIndexEntry,
   LmeField,
   LmeFormDetail,
   LmeFormResponse,
@@ -51,10 +52,18 @@ interface McpPagination {
 }
 
 /** 会話一覧の 1 人分（確認状態・対応ステータス・最終メッセージ日時） */
-export interface ConversationIndexEntry {
-  confirm_status: string | null;
-  handling_status: LmeHandlingStatus | null;
-  last_message_date: string | null;
+export type ConversationIndexEntry = LmeConversationIndexEntry;
+
+/**
+ * 会話一覧の対応ステータス。MCP の list_conversations は handling_status ではなく
+ * handling_status_id / handling_status_name の 2 列で返す（2026-10 実測）。公開 API は {id,name}。
+ */
+export function conversationHandlingStatus(r: Record<string, unknown>): LmeHandlingStatus | null {
+  const hs = r.handling_status;
+  if (hs && typeof hs === "object" && typeof (hs as { name?: unknown }).name === "string") return hs as LmeHandlingStatus;
+  const name = typeof hs === "string" ? hs : r.handling_status_name;
+  if (typeof name === "string" && name.trim()) return { id: Number(r.handling_status_id ?? 0), name };
+  return null;
 }
 
 /** MCP の get_conversation_detail の 1 人分 */
@@ -494,7 +503,7 @@ export class LmeSource {
           const confirm = r.confirm_status;
           out.set(id, {
             confirm_status: typeof confirm === "string" ? confirm : typeof confirm === "number" ? (confirm > 0 ? "unread" : "read") : null,
-            handling_status: (r.handling_status as LmeHandlingStatus | null) ?? null,
+            handling_status: conversationHandlingStatus(r),
             last_message_date: (r.last_message_date as string | null) ?? (r.last_time_message as string | null) ?? null,
           });
         }

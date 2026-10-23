@@ -114,6 +114,13 @@ export interface LmeConversation {
   complete: boolean; // 全履歴を取り切れたか（API は直近100件のみ）
 }
 
+/** 会話一覧の 1 人分（conversation_index.json。確認状態・対応ステータス・最終メッセージ日時） */
+export interface LmeConversationIndexEntry {
+  confirm_status: string | null;
+  handling_status: LmeHandlingStatus | null;
+  last_message_date: string | null;
+}
+
 /** 1人分のスナップショット（friends/<id>.json） */
 export interface LmeFriendSnapshot {
   row: LmeFriendRow;
