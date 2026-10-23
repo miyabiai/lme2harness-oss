@@ -11,6 +11,8 @@ export interface ConvertResult {
 }
 
 const FRIEND_INFO_RE = /\[FRIEND_INFO_[A-Za-z0-9]+\]/g;
+/** エルメの「システム表示名」の差し込み。L Harness では友だちのメタデータ system_name に入れている */
+const SYSTEM_NAME_RE = /\[FRIEND_INFO_system_name\]/g;
 const NAME_RE = /\[(NAME|LINE_NAME|USER_NAME|name)\]/g;
 /** エルメのテンプレート・ステップ本文の名前差し込み（2026-10 実データで確認）。{{name}} は対象外 */
 const BRACE_NAME_RE = /(?<!\{)\{name\}(?!\})/g;
@@ -18,7 +20,10 @@ const ANY_TAG_RE = /\[[A-Z_]{3,}[A-Za-z0-9_]*\]/g;
 
 export function convertLmeText(input: string, friendInfoAsName = true): ConvertResult {
   let replaced = 0;
-  let text = input;
+  let text = input.replace(SYSTEM_NAME_RE, () => {
+    replaced += 1;
+    return "{{metadata.system_name}}";
+  });
   if (friendInfoAsName) {
     text = text.replace(FRIEND_INFO_RE, () => {
       replaced += 1;
