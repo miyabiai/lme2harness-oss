@@ -91,13 +91,28 @@ function noteUnmigrated(store: SnapshotStore, ctx: PlanContext): void {
   if (products.length) pr.notes.push("L Harness に商品機能は無いため移していません（購入履歴は友だちのメタデータ _lme.purchase_history に残しています）");
 }
 
+/**
+ * SQL ファイル名の先頭番号。表ごとに固定（TABLE_ORDER の位置）にする。
+ * 連番にすると、再変換で空になった表（例: 既存タグを使い回して tags が 0 行）があるだけで
+ * 後ろの全ファイルの名前がずれ、apply が「流し済み」を見分けられず全部流し直してしまう。
+ */
+export function chunkPrefix(table: string): string {
+  const i = TABLE_ORDER.indexOf(table);
+  return String(i >= 0 ? i + 1 : 90 + ((hashTable(table) % 9))).padStart(2, "0");
+}
+
+function hashTable(name: string): number {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h;
+}
+
 export function writePlan(outDir: string, ctx: PlanContext, rowsByTable: Map<string, Row[]>, store: SnapshotStore): PlanManifest {
   // 生成物には顧客の名前・会話・回答が入るので、本人だけが読めるようにする
   ensurePrivateDir(outDir);
   ensurePrivateDir(join(outDir, "sql"));
   const chunks: PlanManifest["chunks"] = [];
   const counts: Record<string, number> = {};
-  let seq = 0;
   const tables = [...TABLE_ORDER, ...Array.from(rowsByTable.keys()).filter((t) => !TABLE_ORDER.includes(t))];
   for (const table of tables) {
     const rows = rowsByTable.get(table);
@@ -105,7 +120,7 @@ export function writePlan(outDir: string, ctx: PlanContext, rowsByTable: Map<str
     // 同じ行への追記更新（例: フォームの回答数）を二重に数えない
     counts[table] = new Set(rows.map((r) => JSON.stringify((r.conflict ?? ["id"]).map((c) => r.values[c])))).size;
     const statements = rows.map(renderInsert);
-    const sqlChunks: SqlChunk[] = chunkStatements(statements, `${String(++seq).padStart(2, "0")}_${table}`);
+    const sqlChunks: SqlChunk[] = chunkStatements(statements, `${chunkPrefix(table)}_${table}`);
     for (const c of sqlChunks) {
       const file = join("sql", c.name);
       writePrivateFile(join(outDir, file), c.statements.join("\n") + "\n");
