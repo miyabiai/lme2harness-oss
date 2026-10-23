@@ -65,7 +65,6 @@ program
   .option("--no-messages", "会話履歴を移さない")
   .option("--no-richmenu", "リッチメニューを取り込まない")
   .option("--no-resume", "取り出し済みのデータを使わず全部取り直す")
-  .option("--parallel <n>", "投入で同じ表のファイルを n 本同時に流す（既定 1）", (v) => Number(v))
   .action((o) => runMigrate(o).catch(onError));
 
 program
@@ -90,7 +89,6 @@ program
   .option("--local", "--remote ではなく --local に流す")
   .option("--dry-run", "実行せず対象ファイルだけ表示")
   .option("--from <n>", "n 番目のチャンクから再開", (v) => Number(v))
-  .option("--parallel <n>", "同じ表のファイルを n 本同時に流す（既定 1。友だちが多いときは 4 くらいで速くなる）", (v) => Number(v))
   .action((o) => runApply(o).catch(onError));
 
 program
