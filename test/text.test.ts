@@ -13,3 +13,11 @@ describe("エルメの差し込み → L Harness の変数", () => {
     expect(r.unknown).toEqual(["[CONVERSION_BnjTzoSJ]"]);
   });
 });
+
+describe("システム表示名の差し込み", () => {
+  it("[FRIEND_INFO_system_name] は {{metadata.system_name}} にする", () => {
+    const r = convertLmeText("[FRIEND_INFO_system_name]さん、こんにちは");
+    expect(r.text).toBe("{{metadata.system_name}}さん、こんにちは");
+    expect(r.unknown).toEqual([]);
+  });
+});
