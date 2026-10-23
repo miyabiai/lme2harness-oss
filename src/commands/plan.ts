@@ -4,12 +4,18 @@ import { SnapshotStore } from "../snapshot/store.js";
 import { buildPlan, writePlan } from "../mapping/plan.js";
 import { quote } from "../sql/render.js";
 import { loadEnv, outDir, resolveLineAccountId, snapshotDir } from "./shared.js";
+import { toHarnessJst } from "../harness/time.js";
 import * as log from "../log.js";
 
 export async function runPlan(opts: { lineAccountId?: string; localSchema?: string }): Promise<void> {
   const env = loadEnv();
   const store = new SnapshotStore(snapshotDir(env));
-  if (!store.meta()) throw new Error(`スナップショットがありません（${env.config.snapshot_dir}）。先に \`lme2harness extract\` を実行してください`);
+  const meta = store.meta();
+  if (!meta) throw new Error(`スナップショットがありません（${env.config.snapshot_dir}）。先に \`lme2harness extract\` を実行してください`);
+  // 行の updated_at などに入れる「今」は、取り出しが終わった時刻にする。
+  // 変換のたびに変えると、中身が同じでも SQL が変わって apply が全部流し直してしまう
+  const finished = meta.finished_at ? Date.parse(meta.finished_at) : NaN;
+  const now = Number.isFinite(finished) ? toHarnessJst(finished) : undefined;
   const lineAccountId = await resolveLineAccountId(env, opts.lineAccountId);
 
   const existingTags = new Map<string, string>();
@@ -23,7 +29,7 @@ export async function runPlan(opts: { lineAccountId?: string; localSchema?: stri
   }
 
   log.info("変換中…");
-  const { ctx, rowsByTable } = buildPlan(store, { lineAccountId, options: env.config.options, existingTags });
+  const { ctx, rowsByTable } = buildPlan(store, { lineAccountId, options: env.config.options, existingTags, now });
   const out = outDir(env);
   const manifest = writePlan(out, ctx, rowsByTable, store);
 
