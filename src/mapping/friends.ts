@@ -1,9 +1,9 @@
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { PlanContext } from "./context.js";
-import type { LmeFriendSnapshot } from "../lme/types.js";
+import type { LmeConversationIndexEntry, LmeFriendSnapshot } from "../lme/types.js";
 import { harnessId } from "../harness/ids.js";
 import { lmeToHarnessJst, parseLmeDate, toHarnessJst } from "../harness/time.js";
-import { messageToLogParts, outgoingSource } from "./messages.js";
+import { isEventRecord, messageToLogParts, outgoingSource } from "./messages.js";
 import { nextDeliveryAt, restoreProgress } from "./scenario-progress.js";
 
 const LINE_UID_RE = /^U[0-9a-f]{32}$/;
@@ -37,12 +37,18 @@ export interface FriendMapStats {
   /** 配信中で位置が分からなかった人 */
   scenarioUnknown: number;
   invalidUid: number;
+  /** 会話ではない記録（ステップ配信の開始・停止など）。入れない */
+  events: number;
+  /** 本文が空の送信記録（エルメの履歴自体に本文が無い）。入れない */
+  empty: number;
 }
 
 type EntityReport = ReturnType<PlanContext["report"]>;
 
 export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapStats {
-  const stats: FriendMapStats = { friends: 0, blocked: 0, tags: 0, messages: 0, chats: 0, scenarios: 0, scenarioRestored: 0, scenarioUnknown: 0, invalidUid: 0 };
+  const stats: FriendMapStats = { friends: 0, blocked: 0, tags: 0, messages: 0, chats: 0, scenarios: 0, scenarioRestored: 0, scenarioUnknown: 0, invalidUid: 0, events: 0, empty: 0 };
+  // 会話一覧（確認状態・対応ステータス・最終日時）。friends/<id>.json に無い分をここから補う
+  const index = store.readJson<Record<string, LmeConversationIndexEntry>>("conversation_index.json") ?? {};
   const fr = ctx.report("friends", "友だち");
   const tr = ctx.report("friend_tags", "友だちのタグ");
   const mr = ctx.report("messages", "会話履歴");
@@ -64,6 +70,12 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
       continue;
     }
     seenUids.add(uid);
+    const idx = index[String(s.row.lmessage_friend_id)];
+    if (s.conversation && idx) {
+      s.conversation.confirm_status = s.conversation.confirm_status ?? idx.confirm_status;
+      s.conversation.handling_status = s.conversation.handling_status ?? idx.handling_status;
+      s.conversation.last_message_date = s.conversation.last_message_date ?? idx.last_message_date;
+    }
     const blocked = isBlocked(s);
     if (blocked && !ctx.options.include_blocked) {
       fr.skipped += 1;
@@ -73,7 +85,7 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
       snap: s,
       id: ctx.friendId(s.row.lmessage_friend_id),
       followed: lmeToHarnessJst(followedAt(s), ctx.now),
-      handling: s.conversation?.handling_status?.name ?? null,
+      handling: s.conversation?.handling_status?.name ?? idx?.handling_status?.name ?? null,
     };
     addFriendRow(friend, uid, blocked, ctx);
     stats.friends += 1;
@@ -95,6 +107,8 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
     }
   }
   mr.notes.push("エルメ側の画像・ファイルはエルメの URL を参照しています（エルメ解約後は開けなくなります）");
+  if (stats.events) mr.notes.push(`ステップ配信の開始・停止などの記録 ${stats.events}件は会話ではないので入れていません`);
+  if (stats.empty) mr.notes.push(`本文が空の送信記録 ${stats.empty}件は入れていません（エルメの履歴自体に本文が残っていないもの）`);
   return stats;
 }
 
@@ -213,9 +227,17 @@ function addMessages(f: FriendInfo, ctx: PlanContext, stats: FriendMapStats, mr:
   let lastAt: string | null = null;
   let seq = 0;
   for (const m of msgs) {
+    if (isEventRecord(m)) {
+      stats.events += 1;
+      continue;
+    }
     const at = parseLmeDate(m.sent_at);
     const createdAt = at === null ? f.followed : toHarnessJst(at);
     const parts = messageToLogParts(m);
+    if (!parts.length) {
+      stats.empty += 1;
+      continue;
+    }
     const incoming = m.sender === "friend";
     for (const part of parts) {
       seq += 1;

@@ -21,6 +21,51 @@ const LABELS: Record<string, string> = {
   sticker: "[スタンプ]",
 };
 
+/** ステップ配信の開始・停止などの「出来事の記録」の種類（会話ではない） */
+const EVENT_TYPES = new Set(["stop_scenario", "start_scenario", "scenario_empty_step", "event"]);
+
+/**
+ * 会話ではない記録か。エルメは「ステップ配信を開始した／停止した／空のステップ」を
+ * message_type=scenario（中身は {"scenario_name":…,"from":…} の JSON 文字列）や
+ * stop_scenario / scenario_empty_step として会話履歴に混ぜて返す（2026-10 実測）。
+ */
+export function isEventRecord(m: LmeMessage): boolean {
+  const type = (m.message_type || "").toLowerCase();
+  if (EVENT_TYPES.has(type)) return true;
+  if (typeof m.content === "string" && m.content.startsWith("{")) {
+    try {
+      const j = JSON.parse(m.content) as Record<string, unknown>;
+      return Boolean(j && typeof j === "object" && "scenario_name" in j);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * エルメのボタン型（カード）メッセージ → 文字。
+ * 形: {type_button, data:[{title?, text?, buttons:[{label}]}]}（2026-10 実測）
+ */
+export function buttonsToText(content: unknown): string {
+  const cards = ((content as { data?: unknown[] } | null)?.data ?? (Array.isArray(content) ? content : [])) as Array<Record<string, unknown>>;
+  const blocks: string[] = [];
+  for (const card of cards) {
+    if (!card || typeof card !== "object") continue;
+    const lines: string[] = [];
+    for (const key of ["title", "text"]) {
+      const v = card[key];
+      if (typeof v === "string" && v.trim()) lines.push(convertLmeText(v).text);
+    }
+    const labels = (Array.isArray(card.buttons) ? card.buttons : [])
+      .map((b) => (b && typeof b === "object" ? (b as { label?: unknown }).label : null))
+      .filter((l): l is string => typeof l === "string" && l.trim().length > 0);
+    if (labels.length) lines.push(labels.map((l) => `▶ ${l}`).join("\n"));
+    if (lines.length) blocks.push(lines.join("\n"));
+  }
+  return blocks.length ? blocks.join("\n――\n") : "[ボタン]";
+}
+
 /** LINE の画像メッセージの中身（原寸・プレビューとも同じ URL）。 */
 export function imageMessageContent(url: string): string {
   return JSON.stringify({ originalContentUrl: url, previewImageUrl: url });
@@ -50,6 +95,9 @@ function partFromTyped(type: string, content: unknown): LogPart | null {
   if (t === "flex") {
     return { message_type: "flex", content: typeof content === "string" ? content : JSON.stringify(content ?? {}) };
   }
+  if (t === "buttons" || t === "button" || t === "card") {
+    return { message_type: "text", content: buttonsToText(content) };
+  }
   if (t === "pdf" || t === "file") {
     const c = (content ?? {}) as { url?: string; file_name_original?: string; file_name?: string };
     const name = c.file_name_original ?? c.file_name;
@@ -71,6 +119,7 @@ function partFromTyped(type: string, content: unknown): LogPart | null {
 }
 
 export function messageToLogParts(m: LmeMessage): LogPart[] {
+  if (isEventRecord(m)) return [];
   const type = (m.message_type || "text").toLowerCase();
   const content = m.content;
   // エルメの template / scenario / broadcast / action は [{type, content}] の配列
