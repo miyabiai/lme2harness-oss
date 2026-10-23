@@ -113,7 +113,12 @@ export class LmeSource {
     return this.mcp.call<T>(tool, { bot_id: this.botId, ...args });
   }
 
-  /** MCP の {items, pagination:{currentPage,limit,total}} 形式を全ページ読む。 */
+  /**
+   * MCP の {items, pagination:{currentPage,limit,total}} 形式を全ページ読む。
+   * pagination.total は「全体の件数」ではなく「そのページの件数」を返すツールがある
+   * （get_form_responses で実測: 4,575 件の回答がどのページでも total=100）ので、
+   * 総数は当てにせず「limit に満たないページが来るまで」読む。
+   */
   private async mcpPages<T>(tool: string, field: string, args: Record<string, unknown> = {}, limit = 100): Promise<T[]> {
     const items: T[] = [];
     let page = 1;
@@ -123,8 +128,8 @@ export class LmeSource {
       if (!Array.isArray(rows)) throw new McpError(`${tool} の応答に ${field} がありません`);
       items.push(...(rows as T[]));
       const p = res.pagination as McpPagination | undefined;
-      const total = typeof p?.total === "number" ? p.total : rows.length;
-      if (rows.length === 0 || items.length >= total) return items;
+      const pageLimit = typeof p?.limit === "number" && p.limit > 0 ? p.limit : limit;
+      if (rows.length < pageLimit) return items;
       page += 1;
       if (page > 10_000) throw new McpError(`${tool} のページ数が上限を超えました`);
     }
