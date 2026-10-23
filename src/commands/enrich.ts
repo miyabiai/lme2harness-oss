@@ -37,6 +37,17 @@ export async function runEnrich(opts: { limit?: number }): Promise<void> {
     updated += d.updated ?? 0;
     notFound += d.notFound ?? 0;
     errors += d.otherErrors ?? 0;
+    // 最初の回で全員「その他のエラー」なら、続けても同じなので止めて理由の調べ方を出す
+    // （龍崎の実例: D1 無料枠の 1 日 10 万行の書き込み上限に達していて、LINE からは取れているのに UPDATE が弾かれていた）
+    if (round === 0 && (d.processed ?? 0) > 0 && (d.updated ?? 0) === 0 && (d.otherErrors ?? 0) === (d.processed ?? 0)) {
+      throw new Error(
+        [
+          `最初の ${d.processed} 人が全員エラーでした。L Harness 側で LINE の取得か D1 の更新が失敗しています。`,
+          "よくある原因: D1 無料枠の書き込み上限（1 日 10 万行。移行直後に起きやすい。翌日 09:00 JST に回復、または Workers 有料プラン）、チャネルアクセストークンの誤り。",
+          "詳しい理由は L Harness の Worker ログで分かります: npx wrangler tail <Worker 名> を動かしてから、もう一度 `lme2harness enrich --limit 1`",
+        ].join("\n"),
+      );
+    }
     log.info(`  … ${offset + (d.processed ?? 0)}人まで（更新 ${updated}）`);
     if (!d.hasMore) break;
     offset = d.nextOffset ?? offset + (d.processed ?? batch);
