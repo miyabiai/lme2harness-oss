@@ -28,7 +28,9 @@ export async function runEnrich(opts: { limit?: number }): Promise<void> {
   let updated = 0;
   let notFound = 0;
   let errors = 0;
-  for (let round = 0; round < 1000; round++) {
+  const maxRounds = 1000;
+  let finished = false;
+  for (let round = 0; round < maxRounds; round++) {
     const url = `${base}/api/admin/refresh-profiles?offset=${offset}&limit=${batch}&accountId=${encodeURIComponent(accountId)}`;
     const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${env.secrets.HARNESS_API_KEY}` }, signal: AbortSignal.timeout(120_000) });
     const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; data?: RefreshProfilesResult } & RefreshProfilesResult;
@@ -49,8 +51,12 @@ export async function runEnrich(opts: { limit?: number }): Promise<void> {
       );
     }
     log.info(`  … ${offset + (d.processed ?? 0)}人まで（更新 ${updated}）`);
-    if (!d.hasMore) break;
+    if (!d.hasMore) {
+      finished = true;
+      break;
+    }
     offset = d.nextOffset ?? offset + (d.processed ?? batch);
   }
-  log.info(`完了: 更新 ${updated}人 / 取得できず ${notFound}人 / エラー ${errors}件`);
+  log.info(`${finished ? "完了" : "途中まで"}: 更新 ${updated}人 / 取得できず ${notFound}人 / エラー ${errors}件`);
+  if (!finished) throw new Error(`${maxRounds} 回呼んでもまだ残りがあります（--limit が小さすぎます）。--limit を増やしてもう一度 \`lme2harness enrich\` を実行してください`);
 }
