@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseLmeDate, toHarnessJst, toIsoUtc, lmeToHarnessJst } from "../src/harness/time.js";
-import { convertLmeText, htmlToText } from "../src/mapping/text.js";
+import { parseSourceDate, toHarnessJst, toIsoUtc, sourceToHarnessJst } from "../src/harness/time.js";
+import { convertSourceText, htmlToText } from "../src/mapping/text.js";
 import { quote, renderInsert, chunkStatements } from "../src/sql/render.js";
 import { harnessId } from "../src/harness/ids.js";
 import { messageToLogParts } from "../src/mapping/messages.js";
@@ -8,14 +8,14 @@ import { parseDateBooking } from "../src/mapping/bookings.js";
 
 describe("日時", () => {
   it("エルメの JST 文字列を L Harness 形式にする", () => {
-    expect(lmeToHarnessJst("2026-10-08 19:28:46")).toBe("2026-10-08T19:28:46.000+09:00");
-    expect(lmeToHarnessJst("2026-10-08 19:28:46.0")).toBe("2026-10-08T19:28:46.000+09:00");
-    expect(lmeToHarnessJst("2026-07-30T13:00:00+09:00")).toBe("2026-07-30T13:00:00.000+09:00");
-    expect(lmeToHarnessJst("2026-10-05")).toBe("2026-10-05T00:00:00.000+09:00");
-    expect(lmeToHarnessJst(null, "fallback")).toBe("fallback");
+    expect(sourceToHarnessJst("2026-10-08 19:28:46")).toBe("2026-10-08T19:28:46.000+09:00");
+    expect(sourceToHarnessJst("2026-10-08 19:28:46.0")).toBe("2026-10-08T19:28:46.000+09:00");
+    expect(sourceToHarnessJst("2026-07-30T13:00:00+09:00")).toBe("2026-07-30T13:00:00.000+09:00");
+    expect(sourceToHarnessJst("2026-10-05")).toBe("2026-10-05T00:00:00.000+09:00");
+    expect(sourceToHarnessJst(null, "fallback")).toBe("fallback");
   });
   it("UTC 変換", () => {
-    const t = parseLmeDate("2026-10-20 14:00:00")!;
+    const t = parseSourceDate("2026-10-20 14:00:00")!;
     expect(toIsoUtc(t)).toBe("2026-10-20T05:00:00.000Z");
     expect(toHarnessJst(t)).toBe("2026-10-20T14:00:00.000+09:00");
   });
@@ -23,7 +23,7 @@ describe("日時", () => {
 
 describe("差し込みタグ", () => {
   it("FRIEND_INFO と NAME を {{name}} にし、不明なタグは残す", () => {
-    const r = convertLmeText("[FRIEND_INFO_1M6q8jZR7WzR]さん、[NAME]。[UNKNOWN_TAG]");
+    const r = convertSourceText("[FRIEND_INFO_1M6q8jZR7WzR]さん、[NAME]。[UNKNOWN_TAG]");
     expect(r.text).toBe("{{name}}さん、{{name}}。[UNKNOWN_TAG]");
     expect(r.replaced).toBe(2);
     expect(r.unknown).toEqual(["[UNKNOWN_TAG]"]);

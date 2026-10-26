@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { LmeFriendSnapshot, SnapshotMeta } from "../lme/types.js";
+import type { SourceFriendSnapshot, SnapshotMeta } from "../source/types.js";
 import { ensurePrivateDir, readJsonFile, writePrivateFile } from "../util.js";
 
 /**
@@ -40,7 +40,7 @@ export class SnapshotStore {
     return this.readJson<SnapshotMeta>("meta.json");
   }
 
-  writeFriend(snap: LmeFriendSnapshot): void {
+  writeFriend(snap: SourceFriendSnapshot): void {
     this.writeJson(`friends/${snap.row.lmessage_friend_id}.json`, snap);
   }
 
@@ -48,19 +48,19 @@ export class SnapshotStore {
     return this.has(`friends/${id}.json`);
   }
 
-  readFriend(id: number): LmeFriendSnapshot | null {
-    return this.readJson<LmeFriendSnapshot>(`friends/${id}.json`);
+  readFriend(id: number): SourceFriendSnapshot | null {
+    return this.readJson<SourceFriendSnapshot>(`friends/${id}.json`);
   }
 
   /** 保存済みの友だちを順に返す（メモリに全件載せない）。 */
-  *friends(): Generator<LmeFriendSnapshot> {
+  *friends(): Generator<SourceFriendSnapshot> {
     const dir = join(this.dir, "friends");
     if (!existsSync(dir)) return;
     const files = readdirSync(dir)
       .filter((f) => /^\d+\.json$/.test(f))
       .sort((a, b) => Number(a.slice(0, -5)) - Number(b.slice(0, -5)));
     for (const f of files) {
-      yield JSON.parse(readFileSync(join(dir, f), "utf8")) as LmeFriendSnapshot;
+      yield JSON.parse(readFileSync(join(dir, f), "utf8")) as SourceFriendSnapshot;
     }
   }
 

@@ -1,8 +1,8 @@
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { PlanContext } from "./context.js";
-import type { LmeFormDetail, LmeFormField, LmeFormResponse } from "../lme/types.js";
+import type { SourceFormDetail, SourceFormField, SourceFormResponse } from "../source/types.js";
 import { harnessId } from "../harness/ids.js";
-import { lmeToHarnessJst } from "../harness/time.js";
+import { sourceToHarnessJst } from "../harness/time.js";
 import { htmlToText } from "./text.js";
 import { firstMappedTagId, tagIdsFromActions, textFromActions } from "./masters.js";
 
@@ -28,7 +28,7 @@ function parseJson<T>(s: string | null | undefined, fallback: T): T {
   }
 }
 
-export function convertFormField(f: LmeFormField, usedNames: Set<string>): { field: HarnessField | null; skippedReason?: string } {
+export function convertFormField(f: SourceFormField, usedNames: Set<string>): { field: HarnessField | null; skippedReason?: string } {
   let type = (f.type ?? "").toLowerCase();
   const title = (f.title ?? f.label ?? "").trim();
   const label = (f.label ?? "").trim();
@@ -95,7 +95,7 @@ function answerValue(v: unknown): unknown {
 }
 
 export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
-  const forms = store.readJson<LmeFormDetail[]>("forms.json");
+  const forms = store.readJson<SourceFormDetail[]>("forms.json");
   const r = ctx.report("forms", "フォーム");
   const rr = ctx.report("form_submissions", "フォーム回答");
   if (!forms) {
@@ -125,7 +125,7 @@ export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
         save_to_metadata: 1,
         is_active: ctx.options.activate_automations ? 1 : 0,
         submit_count: 0,
-        created_at: lmeToHarnessJst(form.created_at, ctx.now),
+        created_at: sourceToHarnessJst(form.created_at, ctx.now),
         updated_at: ctx.now,
       },
       update: ["name", "description", "fields", "on_submit_tag_id", "on_submit_message_type", "on_submit_message_content", "updated_at"],
@@ -135,7 +135,7 @@ export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
     if (form.actions_on_open?.length) ctx.note("forms", "フォーム", "「開封時」のアクションは L Harness に無いため移していません");
     if (tagIds.length > 1) ctx.note("forms", "フォーム", "回答時に複数タグを付ける設定は最初のタグだけ移しました");
 
-    const responses = store.readJson<LmeFormResponse[]>(`form_responses/${form.id}.json`) ?? [];
+    const responses = store.readJson<SourceFormResponse[]>(`form_responses/${form.id}.json`) ?? [];
     rr.source += responses.length;
     const submitCount = addFormSubmissions(form.id, formId, responses, nameByTitle, ctx);
     rr.migrated += submitCount;
@@ -151,7 +151,7 @@ export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
 }
 
 /** フォームの全ページの項目を位置順に変換する。nameByTitle はエルメの回答の name（=タイトル）→ L Harness の name */
-function convertFormFields(form: LmeFormDetail): { fields: HarnessField[]; skipped: string[]; nameByTitle: Map<string, string> } {
+function convertFormFields(form: SourceFormDetail): { fields: HarnessField[]; skipped: string[]; nameByTitle: Map<string, string> } {
   const usedNames = new Set<string>();
   const fields: HarnessField[] = [];
   const skipped: string[] = [];
@@ -171,7 +171,7 @@ function convertFormFields(form: LmeFormDetail): { fields: HarnessField[]; skipp
 }
 
 /** 回答 → form_submissions。入れた件数を返す */
-function addFormSubmissions(lmeFormId: number, formId: string, responses: LmeFormResponse[], nameByTitle: Map<string, string>, ctx: PlanContext): number {
+function addFormSubmissions(sourceFormId: number, formId: string, responses: SourceFormResponse[], nameByTitle: Map<string, string>, ctx: PlanContext): number {
   let count = 0;
   for (const resp of responses) {
     const data: Record<string, unknown> = {};
@@ -187,11 +187,11 @@ function addFormSubmissions(lmeFormId: number, formId: string, responses: LmeFor
     ctx.add({
       table: "form_submissions",
       values: {
-        id: harnessId("form_submission", lmeFormId, resp.id),
+        id: harnessId("form_submission", sourceFormId, resp.id),
         form_id: formId,
         friend_id: friendId,
         data: JSON.stringify(data),
-        created_at: lmeToHarnessJst(resp.answered_at, ctx.now),
+        created_at: sourceToHarnessJst(resp.answered_at, ctx.now),
       },
       update: ["data", "friend_id"],
     });

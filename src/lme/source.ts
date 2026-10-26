@@ -3,28 +3,28 @@ import { LmePublicApi, LmeApiError } from "./public-api.js";
 import * as log from "../log.js";
 import { chunked, sleep } from "../util.js";
 import type {
-  LmeAutoReply,
-  LmeBot,
-  LmeConversation,
-  LmeConversationIndexEntry,
-  LmeField,
-  LmeFormDetail,
-  LmeFormResponse,
-  LmeFriendDetail,
-  LmeFriendRow,
-  LmeFriendTag,
-  LmeHandlingStatus,
-  LmeMessage,
-  LmeRichMenu,
-  LmeSalon,
-  LmeScenarioDetail,
-  LmeScenarioListItem,
-  LmeTag,
-  LmeTemplateDetail,
-  LmeTemplateListItem,
-  LmeTrafficSource,
-  LmeWelcomeMessage,
-} from "./types.js";
+  SourceAutoReply,
+  SourceBot,
+  SourceConversation,
+  SourceConversationIndexEntry,
+  SourceField,
+  SourceFormDetail,
+  SourceFormResponse,
+  SourceFriendDetail,
+  SourceFriendRow,
+  SourceFriendTag,
+  SourceHandlingStatus,
+  SourceMessage,
+  SourceRichMenu,
+  SourceSalon,
+  SourceScenarioDetail,
+  SourceScenarioListItem,
+  SourceTag,
+  SourceTemplateDetail,
+  SourceTemplateListItem,
+  SourceTrafficSource,
+  SourceWelcomeMessage,
+} from "../source/types.js";
 
 /**
  * エルメのデータ取得口を 1 つにまとめる。
@@ -52,15 +52,15 @@ interface McpPagination {
 }
 
 /** 会話一覧の 1 人分（確認状態・対応ステータス・最終メッセージ日時） */
-export type ConversationIndexEntry = LmeConversationIndexEntry;
+export type ConversationIndexEntry = SourceConversationIndexEntry;
 
 /**
  * 会話一覧の対応ステータス。MCP の list_conversations は handling_status ではなく
  * handling_status_id / handling_status_name の 2 列で返す（2026-10 実測）。公開 API は {id,name}。
  */
-export function conversationHandlingStatus(r: Record<string, unknown>): LmeHandlingStatus | null {
+export function conversationHandlingStatus(r: Record<string, unknown>): SourceHandlingStatus | null {
   const hs = r.handling_status;
-  if (hs && typeof hs === "object" && typeof (hs as { name?: unknown }).name === "string") return hs as LmeHandlingStatus;
+  if (hs && typeof hs === "object" && typeof (hs as { name?: unknown }).name === "string") return hs as SourceHandlingStatus;
   const name = typeof hs === "string" ? hs : r.handling_status_name;
   if (typeof name === "string" && name.trim()) return { id: Number(r.handling_status_id ?? 0), name };
   return null;
@@ -169,14 +169,14 @@ export class LmeSource {
   }
 
   // ---------- bot ----------
-  async listBots(): Promise<LmeBot[]> {
+  async listBots(): Promise<SourceBot[]> {
     if (!this.mcp) return [];
-    const res = await this.mcp.call<{ bots: LmeBot[] }>("list_bots", {});
+    const res = await this.mcp.call<{ bots: SourceBot[] }>("list_bots", {});
     return res.bots ?? [];
   }
 
   // ---------- マスタ ----------
-  async tags(): Promise<LmeTag[]> {
+  async tags(): Promise<SourceTag[]> {
     if (this.hasMcp) {
       const rows = await this.mcpPages<{ id: number; name: string; count_user_tag?: number; created_at?: string }>("list_tags", "tags");
       return rows.map((r) => ({ id: r.id, name: r.name, friend_count: r.count_user_tag, created_at: r.created_at ?? null }));
@@ -184,7 +184,7 @@ export class LmeSource {
     return (await this.api!.tags()).map((r) => ({ id: r.id, name: r.name, friend_count: r.friend_count }));
   }
 
-  async fields(): Promise<LmeField[]> {
+  async fields(): Promise<SourceField[]> {
     if (this.hasMcp) {
       const rows = await this.mcpPages<{ id: number; title: string; type_data: string; options?: unknown }>("list_friend_info_fields", "fields");
       return rows.map((r) => ({ id: r.id, title: r.title, type: r.type_data, options: Array.isArray(r.options) ? (r.options as never) : null }));
@@ -192,31 +192,31 @@ export class LmeSource {
     return (await this.api!.friendInfoFields()).map((r) => ({ id: r.field_id, title: r.title, type: r.field_type, options: r.options }));
   }
 
-  async handlingStatuses(): Promise<LmeHandlingStatus[]> {
-    if (this.hasMcp) return this.mcpPages<LmeHandlingStatus>("list_handling_statuses", "handling_statuses");
+  async handlingStatuses(): Promise<SourceHandlingStatus[]> {
+    if (this.hasMcp) return this.mcpPages<SourceHandlingStatus>("list_handling_statuses", "handling_statuses");
     return this.api!.handlingStatuses();
   }
 
-  async scenarios(): Promise<LmeScenarioListItem[]> {
-    if (this.hasMcp) return this.mcpPages<LmeScenarioListItem>("list_scenarios", "scenarios");
+  async scenarios(): Promise<SourceScenarioListItem[]> {
+    if (this.hasMcp) return this.mcpPages<SourceScenarioListItem>("list_scenarios", "scenarios");
     return (await this.api!.scenarios()).map((r) => ({ id: r.scenario_id, name: r.name, count_follow: r.followers_count }));
   }
 
   /** ステップの中身は MCP でしか取れない。 */
-  async scenarioDetails(ids: number[]): Promise<LmeScenarioDetail[]> {
+  async scenarioDetails(ids: number[]): Promise<SourceScenarioDetail[]> {
     if (!this.hasMcp || ids.length === 0) return [];
-    return this.mcpDetails<LmeScenarioDetail>("get_scenario_detail", "scenario_ids", ids, (res) =>
-      Array.isArray(res) ? res : ((res as { scenarios?: LmeScenarioDetail[] }).scenarios ?? []),
+    return this.mcpDetails<SourceScenarioDetail>("get_scenario_detail", "scenario_ids", ids, (res) =>
+      Array.isArray(res) ? res : ((res as { scenarios?: SourceScenarioDetail[] }).scenarios ?? []),
     );
   }
 
-  async templates(): Promise<LmeTemplateListItem[]> {
+  async templates(): Promise<SourceTemplateListItem[]> {
     if (this.hasMcp) {
       const cats = await this.mcpPages<{ category_id: number; category_name: string; templates: Array<{ id: number; name: string; type: string; content?: string }> }>(
         "list_templates",
         "categories",
       );
-      const out: LmeTemplateListItem[] = [];
+      const out: SourceTemplateListItem[] = [];
       for (const c of cats) {
         for (const t of c.templates ?? []) {
           out.push({ id: t.id, name: t.name, type: t.type, category_id: c.category_id, category_name: c.category_name, content: t.content });
@@ -228,16 +228,16 @@ export class LmeSource {
   }
 
   /** group テンプレートは子を展開して children に入れる。 */
-  async templateDetail(id: number, depth = 0): Promise<LmeTemplateDetail | null> {
+  async templateDetail(id: number, depth = 0): Promise<SourceTemplateDetail | null> {
     if (!this.hasMcp) return null;
-    const res = await this.callMcp<LmeTemplateDetail>("get_template_detail", { template_id: id });
+    const res = await this.callMcp<SourceTemplateDetail>("get_template_detail", { template_id: id });
     if (!res || typeof res !== "object") return null;
     if (res.type === "group" && typeof res.content === "string" && depth < 2) {
       const childIds = res.content
         .split(",")
         .map((s) => Number(s.trim()))
         .filter((n) => Number.isFinite(n) && n > 0);
-      const children: LmeTemplateDetail[] = [];
+      const children: SourceTemplateDetail[] = [];
       for (const cid of childIds) {
         const child = await this.templateDetail(cid, depth + 1);
         if (child) children.push(child);
@@ -247,26 +247,26 @@ export class LmeSource {
     return res;
   }
 
-  async forms(): Promise<LmeFormDetail[]> {
+  async forms(): Promise<SourceFormDetail[]> {
     if (!this.hasMcp) return [];
     const list = await this.mcpPages<{ id: number }>("list_forms", "forms");
-    return this.mcpDetails<LmeFormDetail>("get_form_detail", "form_ids", list.map((f) => f.id));
+    return this.mcpDetails<SourceFormDetail>("get_form_detail", "form_ids", list.map((f) => f.id));
   }
 
-  async formResponses(formId: number): Promise<LmeFormResponse[]> {
+  async formResponses(formId: number): Promise<SourceFormResponse[]> {
     if (!this.hasMcp) return [];
-    return this.mcpPages<LmeFormResponse>("get_form_responses", "responses", { form_id: formId });
+    return this.mcpPages<SourceFormResponse>("get_form_responses", "responses", { form_id: formId });
   }
 
-  async autoReplies(): Promise<LmeAutoReply[]> {
+  async autoReplies(): Promise<SourceAutoReply[]> {
     if (!this.hasMcp) return [];
     const list = await this.mcpPages<{ id: number }>("list_autoreply", "auto_replies");
-    return this.mcpDetails<LmeAutoReply>("get_autoreply_detail", "auto_reply_ids", list.map((f) => f.id));
+    return this.mcpDetails<SourceAutoReply>("get_autoreply_detail", "auto_reply_ids", list.map((f) => f.id));
   }
 
-  async welcomeMessages(): Promise<LmeWelcomeMessage[]> {
+  async welcomeMessages(): Promise<SourceWelcomeMessage[]> {
     if (!this.hasMcp) return [];
-    const out: LmeWelcomeMessage[] = [];
+    const out: SourceWelcomeMessage[] = [];
     for (const type of ["add_new", "add_old", "unblock"] as const) {
       try {
         const res = await this.callMcp<{ data?: { message?: string | null; detailAction?: unknown[]; actions?: unknown[] } }>("get_welcome_message", { type });
@@ -284,9 +284,9 @@ export class LmeSource {
     return out;
   }
 
-  async richMenus(): Promise<LmeRichMenu[]> {
+  async richMenus(): Promise<SourceRichMenu[]> {
     if (!this.hasMcp) return [];
-    const list = await this.mcpPages<LmeRichMenu>("list_richmenus", "richmenus");
+    const list = await this.mcpPages<SourceRichMenu>("list_richmenus", "richmenus");
     if (list.length === 0) return [];
     const details = new Map<number, unknown>();
     for (const chunk of chunked(list.map((r) => r.id), 50)) {
@@ -300,12 +300,12 @@ export class LmeSource {
     return list.map((r) => ({ ...r, detail: details.get(r.id) }));
   }
 
-  async trafficSources(): Promise<LmeTrafficSource[]> {
+  async trafficSources(): Promise<SourceTrafficSource[]> {
     if (!this.hasMcp) return [];
-    return this.mcpPages<LmeTrafficSource>("list_traffic_sources", "traffic_sources");
+    return this.mcpPages<SourceTrafficSource>("list_traffic_sources", "traffic_sources");
   }
 
-  async salons(): Promise<LmeSalon[]> {
+  async salons(): Promise<SourceSalon[]> {
     if (!this.hasMcp) return [];
     return this.optionalMcp(
       "サロン予約",
@@ -317,7 +317,7 @@ export class LmeSource {
     );
   }
 
-  async lessonCalendars(): Promise<LmeSalon[]> {
+  async lessonCalendars(): Promise<SourceSalon[]> {
     if (!this.hasMcp) return [];
     return this.optionalMcp(
       "レッスン予約",
@@ -338,8 +338,8 @@ export class LmeSource {
   private async calendarsWithBookings(
     list: CalendarListItem[],
     tools: { detailTool: string; idsArg: string; bookingsTool: string; idArg: string },
-  ): Promise<LmeSalon[]> {
-    const out: LmeSalon[] = [];
+  ): Promise<SourceSalon[]> {
+    const out: SourceSalon[] = [];
     for (const s of list) {
       const detailRes = await this.callMcp<unknown[]>(tools.detailTool, { [tools.idsArg]: String(s.id) });
       const bookings = await this.mcpPages<unknown>(tools.bookingsTool, "bookings", { [tools.idArg]: s.id });
@@ -354,12 +354,12 @@ export class LmeSource {
   }
 
   // ---------- 友だち ----------
-  async friendRows(onProgress?: (done: number, total: number) => void): Promise<LmeFriendRow[]> {
+  async friendRows(onProgress?: (done: number, total: number) => void): Promise<SourceFriendRow[]> {
     if (this.hasMcp) {
-      const rows: LmeFriendRow[] = [];
+      const rows: SourceFriendRow[] = [];
       let page = 1;
       for (;;) {
-        const res = await this.callMcp<{ total: number; total_pages: number; friends: LmeFriendRow[] }>("list_friends", { page, limit: 100 });
+        const res = await this.callMcp<{ total: number; total_pages: number; friends: SourceFriendRow[] }>("list_friends", { page, limit: 100 });
         rows.push(...(res.friends ?? []));
         onProgress?.(rows.length, res.total ?? rows.length);
         if (!res.friends?.length || page >= (res.total_pages ?? 1)) return rows;
@@ -379,15 +379,15 @@ export class LmeSource {
   }
 
   /** 友だち詳細をまとめて取る（MCP は 100 件/回、API は 1 件/回）。 */
-  async friendDetails(ids: number[]): Promise<Map<number, LmeFriendDetail>> {
+  async friendDetails(ids: number[]): Promise<Map<number, SourceFriendDetail>> {
     return this.hasMcp ? this.friendDetailsViaMcp(ids) : this.friendDetailsViaApi(ids);
   }
 
-  private async friendDetailsViaMcp(ids: number[]): Promise<Map<number, LmeFriendDetail>> {
-    const out = new Map<number, LmeFriendDetail>();
+  private async friendDetailsViaMcp(ids: number[]): Promise<Map<number, SourceFriendDetail>> {
+    const out = new Map<number, SourceFriendDetail>();
     for (const chunk of chunked(ids, 100)) {
       const res = await this.callMcp<unknown>("get_friend_detail", { lmessage_friend_ids: chunk.join(",") });
-      for (const d of asArray<LmeFriendDetail>(res)) {
+      for (const d of asArray<SourceFriendDetail>(res)) {
         out.set(d.lmessage_friend_id, {
           ...d,
           tags: (d.tags ?? []).map(normalizeMcpFriendTag),
@@ -399,8 +399,8 @@ export class LmeSource {
     return out;
   }
 
-  private async friendDetailsViaApi(ids: number[]): Promise<Map<number, LmeFriendDetail>> {
-    const out = new Map<number, LmeFriendDetail>();
+  private async friendDetailsViaApi(ids: number[]): Promise<Map<number, SourceFriendDetail>> {
+    const out = new Map<number, SourceFriendDetail>();
     for (const id of ids) {
       try {
         const d = await this.api!.friendDetail(id);
@@ -424,13 +424,13 @@ export class LmeSource {
   }
 
   /** 会話履歴。MCP は全期間（from 指定可）、API は直近100件。 */
-  async conversations(ids: number[], from?: string): Promise<Map<number, LmeConversation>> {
+  async conversations(ids: number[], from?: string): Promise<Map<number, SourceConversation>> {
     return this.hasMcp ? this.conversationsViaMcp(ids, from ?? "2000-01-01") : this.conversationsViaApi(ids);
   }
 
   /** 20 人ずつ 1 ページ目をまとめて取り、2 ページ目以降は 1 人ずつ追いかける。 */
-  private async conversationsViaMcp(ids: number[], fromDate: string): Promise<Map<number, LmeConversation>> {
-    const out = new Map<number, LmeConversation>();
+  private async conversationsViaMcp(ids: number[], fromDate: string): Promise<Map<number, SourceConversation>> {
+    const out = new Map<number, SourceConversation>();
     for (const chunk of chunked(ids, 20)) {
       const res = await this.callMcp<unknown>("get_conversation_detail", { lmessage_friend_ids: chunk.join(","), page: 1, limit: 100, from_date: fromDate });
       for (const c of asArray<McpConversation>(res)) {
@@ -464,8 +464,8 @@ export class LmeSource {
     return true;
   }
 
-  private async conversationsViaApi(ids: number[]): Promise<Map<number, LmeConversation>> {
-    const out = new Map<number, LmeConversation>();
+  private async conversationsViaApi(ids: number[]): Promise<Map<number, SourceConversation>> {
+    const out = new Map<number, SourceConversation>();
     for (const id of ids) {
       try {
         const d = await this.api!.conversationDetail(id);
@@ -518,12 +518,12 @@ export class LmeSource {
 }
 
 /** MCP の友だちのタグは {tag_id, tag_name} と {id, name} の 2 形がある */
-function normalizeMcpFriendTag(t: LmeFriendTag): LmeFriendTag {
+function normalizeMcpFriendTag(t: SourceFriendTag): SourceFriendTag {
   const raw = t as { tag_id?: number; id?: number; tag_name?: string; name?: string; added_at?: string | null };
   return { tag_id: raw.tag_id ?? raw.id!, tag_name: raw.tag_name ?? raw.name, added_at: raw.added_at ?? null };
 }
 
-function normalizeMcpMessage(raw: unknown): LmeMessage {
+function normalizeMcpMessage(raw: unknown): SourceMessage {
   const m = (raw ?? {}) as Record<string, unknown>;
   const senderType = String(m.sender_type ?? m.sender ?? "").toLowerCase();
   const isBot = ["bot", "admin", "system", "line_oa", "oa", "staff"].includes(senderType);

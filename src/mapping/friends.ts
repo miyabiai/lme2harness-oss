@@ -1,14 +1,14 @@
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { PlanContext } from "./context.js";
-import type { LmeConversationIndexEntry, LmeFriendSnapshot } from "../lme/types.js";
+import type { SourceConversationIndexEntry, SourceFriendSnapshot } from "../source/types.js";
 import { harnessId } from "../harness/ids.js";
-import { lmeToHarnessJst, parseLmeDate, toHarnessJst } from "../harness/time.js";
+import { sourceToHarnessJst, parseSourceDate, toHarnessJst } from "../harness/time.js";
 import { isEventRecord, messageToLogParts, outgoingSource } from "./messages.js";
 import { nextDeliveryAt, restoreProgress } from "./scenario-progress.js";
 
 const LINE_UID_RE = /^U[0-9a-f]{32}$/;
 
-function isBlocked(s: LmeFriendSnapshot): boolean {
+function isBlocked(s: SourceFriendSnapshot): boolean {
   const d = s.detail;
   if (typeof d?.is_blocked === "boolean") return d.is_blocked;
   if (typeof s.row.is_blocked === "boolean") return s.row.is_blocked;
@@ -17,11 +17,11 @@ function isBlocked(s: LmeFriendSnapshot): boolean {
   return false;
 }
 
-function followedAt(s: LmeFriendSnapshot): string | null {
+function followedAt(s: SourceFriendSnapshot): string | null {
   return s.detail?.followed_at ?? s.row.followed_at ?? s.row.added_time ?? null;
 }
 
-function blockedAtOf(s: LmeFriendSnapshot): string | null {
+function blockedAtOf(s: SourceFriendSnapshot): string | null {
   return s.detail?.blocked_at ?? s.row.blocked_at ?? null;
 }
 
@@ -48,7 +48,7 @@ type EntityReport = ReturnType<PlanContext["report"]>;
 export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapStats {
   const stats: FriendMapStats = { friends: 0, blocked: 0, tags: 0, messages: 0, chats: 0, scenarios: 0, scenarioRestored: 0, scenarioUnknown: 0, invalidUid: 0, events: 0, empty: 0 };
   // 会話一覧（確認状態・対応ステータス・最終日時）。friends/<id>.json に無い分をここから補う
-  const index = store.readJson<Record<string, LmeConversationIndexEntry>>("conversation_index.json") ?? {};
+  const index = store.readJson<Record<string, SourceConversationIndexEntry>>("conversation_index.json") ?? {};
   const fr = ctx.report("friends", "友だち");
   const tr = ctx.report("friend_tags", "友だちのタグ");
   const mr = ctx.report("messages", "会話履歴");
@@ -84,7 +84,7 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
     const friend: FriendInfo = {
       snap: s,
       id: ctx.friendId(s.row.lmessage_friend_id),
-      followed: lmeToHarnessJst(followedAt(s), ctx.now),
+      followed: sourceToHarnessJst(followedAt(s), ctx.now),
       handling: s.conversation?.handling_status?.name ?? idx?.handling_status?.name ?? null,
     };
     addFriendRow(friend, uid, blocked, ctx);
@@ -114,7 +114,7 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
 
 /** 移す友だち 1 人分の共通値 */
 interface FriendInfo {
-  snap: LmeFriendSnapshot;
+  snap: SourceFriendSnapshot;
   /** L Harness の friends.id */
   id: string;
   /** 友だち追加日時（L Harness JST） */
@@ -180,7 +180,7 @@ function addFriendRow(f: FriendInfo, uid: string, blocked: boolean, ctx: PlanCon
       first_followed_at: f.followed,
       current_follow_started_at: blocked ? null : f.followed,
       last_followed_at: f.followed,
-      last_unfollowed_at: blocked ? lmeToHarnessJst(blockedAtOf(s), ctx.now) : null,
+      last_unfollowed_at: blocked ? sourceToHarnessJst(blockedAtOf(s), ctx.now) : null,
       unfollow_count: blocked ? 1 : 0,
       created_at: f.followed,
       updated_at: ctx.now,
@@ -203,7 +203,7 @@ function addFriendTags(f: FriendInfo, ctx: PlanContext, stats: FriendMapStats, t
     }
     ctx.add({
       table: "friend_tags",
-      values: { friend_id: f.id, tag_id: tagId, assigned_at: lmeToHarnessJst(t.added_at, f.followed) },
+      values: { friend_id: f.id, tag_id: tagId, assigned_at: sourceToHarnessJst(t.added_at, f.followed) },
       conflict: ["friend_id", "tag_id"],
       update: [],
     });
@@ -231,7 +231,7 @@ function addMessages(f: FriendInfo, ctx: PlanContext, stats: FriendMapStats, mr:
       stats.events += 1;
       continue;
     }
-    const at = parseLmeDate(m.sent_at);
+    const at = parseSourceDate(m.sent_at);
     const createdAt = at === null ? f.followed : toHarnessJst(at);
     const parts = messageToLogParts(m);
     if (!parts.length) {
@@ -282,7 +282,7 @@ function addChat(f: FriendInfo, lastAt: string | null, ctx: PlanContext, stats: 
       operator_id: null,
       status: unread ? "unread" : "resolved",
       notes: f.handling ? `対応ステータス: ${f.handling}` : null,
-      last_message_at: lastAt ?? lmeToHarnessJst(conv?.last_message_date, f.followed),
+      last_message_at: lastAt ?? sourceToHarnessJst(conv?.last_message_date, f.followed),
       line_account_id: ctx.lineAccountId,
       created_at: f.followed,
       updated_at: ctx.now,
@@ -298,9 +298,9 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
   const s = f.snap;
   for (const sc of s.detail?.scenarios ?? []) {
     sr.source += 1;
-    const lmeScenarioId = sc.scenario_id ?? sc.id;
-    const scenarioId = lmeScenarioId !== undefined ? ctx.scenarioIds.get(lmeScenarioId) : undefined;
-    if (lmeScenarioId === undefined || !scenarioId) {
+    const sourceScenarioId = sc.scenario_id ?? sc.id;
+    const scenarioId = sourceScenarioId !== undefined ? ctx.scenarioIds.get(sourceScenarioId) : undefined;
+    if (sourceScenarioId === undefined || !scenarioId) {
       sr.skipped += 1;
       ctx.note("friend_scenarios", "ステップ配信の進行状態", "ステップ配信の中身が無い（MCP 未使用か削除済み）ものは進行状態を作っていません");
       continue;
@@ -309,19 +309,19 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
       sr.skipped += 1; // 停止中の人は入れない（L Harness に入れると配信対象になりうるため）
       continue;
     }
-    const startedMs = parseLmeDate(sc.started_at);
-    const progress = sc.status === "following" ? followingProgress(lmeScenarioId, startedMs, f, ctx) : { status: "completed" as const, currentOrder: 9999, nextAt: null };
+    const startedMs = parseSourceDate(sc.started_at);
+    const progress = sc.status === "following" ? followingProgress(sourceScenarioId, startedMs, f, ctx) : { status: "completed" as const, currentOrder: 9999, nextAt: null };
     if (progress.status === "active") stats.scenarioRestored += 1;
     if (progress.status === "paused") stats.scenarioUnknown += 1;
     ctx.add({
       table: "friend_scenarios",
       values: {
-        id: harnessId("friend_scenario", s.row.lmessage_friend_id, lmeScenarioId),
+        id: harnessId("friend_scenario", s.row.lmessage_friend_id, sourceScenarioId),
         friend_id: f.id,
         scenario_id: scenarioId,
         current_step_order: progress.currentOrder,
         status: progress.status,
-        started_at: lmeToHarnessJst(sc.started_at, f.followed),
+        started_at: sourceToHarnessJst(sc.started_at, f.followed),
         next_delivery_at: progress.nextAt,
         updated_at: ctx.now,
       },
@@ -341,8 +341,8 @@ interface FriendScenarioProgress {
 }
 
 /** 配信中の人: 会話履歴の送信記録から「何通目まで届いたか」を復元する */
-function followingProgress(lmeScenarioId: number, startedMs: number | null, f: FriendInfo, ctx: PlanContext): FriendScenarioProgress {
-  const info = ctx.scenarioSteps.get(lmeScenarioId);
+function followingProgress(sourceScenarioId: number, startedMs: number | null, f: FriendInfo, ctx: PlanContext): FriendScenarioProgress {
+  const info = ctx.scenarioSteps.get(sourceScenarioId);
   const progress = info && info.steps.length ? restoreProgress(info, f.snap.conversation?.messages ?? [], startedMs) : null;
   if (!info || !progress) {
     // 履歴が開始時点まで残っていない: 位置が分からないので一時停止で残す（L Harness では自動では再開しない）

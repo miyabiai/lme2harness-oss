@@ -1,5 +1,5 @@
 import { SnapshotStore } from "../snapshot/store.js";
-import type { LmeAction, LmeRichMenu, LmeTrafficSource, LmeWelcomeMessage } from "../lme/types.js";
+import type { SourceAction, SourceRichMenu, SourceTrafficSource, SourceWelcomeMessage } from "../source/types.js";
 import type { HarnessApi } from "../harness/api.js";
 import { loadEnv, requireHarness, resolveLineAccountId, snapshotDir } from "./shared.js";
 import * as log from "../log.js";
@@ -25,7 +25,7 @@ interface LineMenu {
 }
 
 /** エルメのリッチメニューのボタン（get_richmenu_detail の areas[]） */
-interface LmeRichMenuArea {
+interface SourceRichMenuArea {
   action_type?: string;
   content_open_url?: string | null;
   switch_to_menu?: unknown;
@@ -33,15 +33,15 @@ interface LmeRichMenuArea {
 }
 
 export interface RichMenuMatch {
-  elme: LmeRichMenu;
+  elme: SourceRichMenu;
   line: LineMenu | null;
   reason?: string;
 }
 
 /** エルメのメニューと LINE 上のメニューの対応を取る（名前・サイズ・ボタン数がすべて一致し、候補が1つだけのもの） */
-export function matchRichMenus(elme: LmeRichMenu[], line: LineMenu[]): RichMenuMatch[] {
+export function matchRichMenus(elme: SourceRichMenu[], line: LineMenu[]): RichMenuMatch[] {
   return elme.map((e) => {
-    const areas = ((e.detail as { areas?: LmeRichMenuArea[] } | undefined)?.areas ?? []).length;
+    const areas = ((e.detail as { areas?: SourceRichMenuArea[] } | undefined)?.areas ?? []).length;
     const cands = line.filter(
       (l) => l.name === e.name && (!e.width || l.size.width === e.width) && (!e.height || l.size.height === e.height) && (!areas || l.areasCount === areas),
     );
@@ -54,13 +54,13 @@ export function matchRichMenus(elme: LmeRichMenu[], line: LineMenu[]): RichMenuM
 /** エルメ側で「誰にどのメニューを出すか」を決めていた設定を拾う（L Harness で作り直すときの手がかり） */
 export function displayRules(store: SnapshotStore): string[] {
   const rules: string[] = [];
-  const name = (a: LmeAction) => String(a.data?.richmenu_name ?? a.content ?? "?");
-  for (const w of store.readJson<LmeWelcomeMessage[]>("welcome_messages.json") ?? []) {
+  const name = (a: SourceAction) => String(a.data?.richmenu_name ?? a.content ?? "?");
+  for (const w of store.readJson<SourceWelcomeMessage[]>("welcome_messages.json") ?? []) {
     for (const a of w.actions ?? []) {
       if (a.type === "richmenu") rules.push(`友だち追加のとき「${name(a)}」を表示`);
     }
   }
-  for (const t of store.readJson<LmeTrafficSource[]>("traffic_sources.json") ?? []) {
+  for (const t of store.readJson<SourceTrafficSource[]>("traffic_sources.json") ?? []) {
     for (const a of t.actions ?? []) {
       if (a.type === "richmenu") rules.push(`流入経路「${t.name}」から来た人に「${name(a)}」を表示`);
     }
@@ -73,7 +73,7 @@ export async function runRichMenu(opts: { dryRun?: boolean }): Promise<void> {
   const harness = requireHarness(env);
   const accountId = await resolveLineAccountId(env);
   const store = new SnapshotStore(snapshotDir(env));
-  const elme = store.readJson<LmeRichMenu[]>("rich_menus.json") ?? [];
+  const elme = store.readJson<SourceRichMenu[]>("rich_menus.json") ?? [];
   if (!elme.length) {
     log.info("エルメにリッチメニューがありません（または未取得。`lme2harness extract` を先に）");
     return;
@@ -123,13 +123,13 @@ export async function runRichMenu(opts: { dryRun?: boolean }): Promise<void> {
 }
 
 /** LINE 上のリンク先がエルメのクリック計測 URL だと、エルメ解約後に開けなくなるので知らせる */
-async function warnTrackingUrls(harness: HarnessApi, groupId: string, elme: LmeRichMenu): Promise<void> {
+async function warnTrackingUrls(harness: HarnessApi, groupId: string, elme: SourceRichMenu): Promise<void> {
   try {
     const g = await harness.request<{ pages?: Array<{ areas?: Array<{ actionType: string; actionData?: { uri?: string } }> }> }>("GET", `/api/rich-menu-groups/${encodeURIComponent(groupId)}`);
     const uris = (g.pages ?? []).flatMap((p) => p.areas ?? []).filter((a) => a.actionType === "uri").map((a) => a.actionData?.uri ?? "");
     const viaElme = uris.filter((u) => /lmes?\.jp|l-message|lme\.jp/i.test(new URL(u, "https://x").hostname));
     if (viaElme.length) {
-      const direct = ((elme.detail as { areas?: LmeRichMenuArea[] } | undefined)?.areas ?? []).map((a) => a.content_open_url).filter(Boolean);
+      const direct = ((elme.detail as { areas?: SourceRichMenuArea[] } | undefined)?.areas ?? []).map((a) => a.content_open_url).filter(Boolean);
       log.warn(`「${elme.name}」のボタン ${viaElme.length}個がエルメ経由の URL です。エルメ解約後に開けなくなるので、切り替え時に管理画面で直接の URL（例: ${direct[0] ?? "元のリンク先"}）に差し替えてください`);
     }
   } catch {

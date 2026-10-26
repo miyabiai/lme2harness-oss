@@ -7,9 +7,9 @@ import { SnapshotStore } from "../snapshot/store.js";
 import { extractSnapshot } from "../snapshot/extract.js";
 import { TOKEN_PATH } from "./login.js";
 import * as log from "../log.js";
-import type { LmeBot } from "../lme/types.js";
+import type { SourceBot } from "../source/types.js";
 
-export async function buildSource(): Promise<{ source: LmeSource; bot: LmeBot; config: Lme2HarnessConfig }> {
+export async function buildSource(): Promise<{ source: LmeSource; bot: SourceBot; config: Lme2HarnessConfig }> {
   const config = loadConfig();
   const secrets = loadSecrets();
   const mcp = new LmeMcpClient({ tokenPath: TOKEN_PATH() });
@@ -19,7 +19,7 @@ export async function buildSource(): Promise<{ source: LmeSource; bot: LmeBot; c
     throw new Error("エルメへの接続手段がありません。`lme2harness login`（MCP）か .env の LME_API_KEY のどちらかを用意してください");
   }
   const source = new LmeSource({ mcp: hasMcp ? mcp : undefined, api, botId: hasMcp ? config.lme_bot_id : undefined });
-  let bot: LmeBot = { id: config.lme_bot_id ?? "" };
+  let bot: SourceBot = { id: config.lme_bot_id ?? "" };
   if (hasMcp) {
     const bots = await source.listBots();
     const hit = bots.find((b) => b.id === config.lme_bot_id);

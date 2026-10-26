@@ -4,7 +4,7 @@ import { CONFIG_FILE, loadConfig, updateConfig } from "../config.js";
 import { LmeMcpClient, NeedsLogin } from "../lme/mcp-client.js";
 import { ask, interactive } from "../prompt.js";
 import * as log from "../log.js";
-import type { LmeBot } from "../lme/types.js";
+import type { SourceBot } from "../source/types.js";
 
 export const TOKEN_PATH = () => resolve(process.cwd(), ".lme2harness", "mcp-token.json");
 
@@ -15,10 +15,10 @@ export const TOKEN_PATH = () => resolve(process.cwd(), ".lme2harness", "mcp-toke
 export async function runLogin(opts: { botId?: string; browser?: boolean; timeout?: number; relogin?: boolean } = {}): Promise<void> {
   const client = new LmeMcpClient({ tokenPath: TOKEN_PATH() });
   // 保存済みのトークンで list_bots が通るなら、ブラウザでのログインは省く（移行元の選び直しだけできる）
-  let bots: LmeBot[] | null = null;
+  let bots: SourceBot[] | null = null;
   if (client.hasToken() && !opts.relogin) {
     try {
-      bots = (await client.call<{ bots?: LmeBot[] }>("list_bots", {})).bots ?? [];
+      bots = (await client.call<{ bots?: SourceBot[] }>("list_bots", {})).bots ?? [];
       log.info("保存済みのログインが使えるので、ブラウザでのログインは省きます（やり直すときは --relogin）");
     } catch (e) {
       if (!(e instanceof NeedsLogin)) throw e;
@@ -27,7 +27,7 @@ export async function runLogin(opts: { botId?: string; browser?: boolean; timeou
   }
   if (!bots) {
     await client.login({ openBrowser: opts.browser !== false, timeoutMs: opts.timeout && opts.timeout > 0 ? opts.timeout * 1000 : undefined });
-    bots = (await client.call<{ bots?: LmeBot[] }>("list_bots", {})).bots ?? [];
+    bots = (await client.call<{ bots?: SourceBot[] }>("list_bots", {})).bots ?? [];
   }
   if (!bots.length) {
     log.warn("このログインで使える LINE アカウント（bot）が見つかりませんでした");
@@ -36,7 +36,7 @@ export async function runLogin(opts: { botId?: string; browser?: boolean; timeou
   log.info("このログインで使える LINE アカウント:");
   bots.forEach((b, i) => log.info(`  ${i + 1}. ${b.view_name ?? ""}  ${b.line_id ?? ""}  友だち ${b.total_friend ?? "?"}人  (bot_id ${b.id})`));
 
-  let chosen: LmeBot | undefined;
+  let chosen: SourceBot | undefined;
   if (opts.botId) {
     chosen = bots.find((b) => b.id === opts.botId);
     if (!chosen) throw new Error(`--bot-id ${opts.botId} はこのログインから見えません`);

@@ -38,7 +38,7 @@ class SlidingWindowLimiter {
   }
 }
 
-export interface LmeApiPagination {
+export interface SourceApiPagination {
   page: number;
   limit: number;
   total_items: number;
@@ -47,7 +47,7 @@ export interface LmeApiPagination {
 }
 
 /** /friends の 1 行 */
-export interface LmeApiFriendRow {
+export interface SourceApiFriendRow {
   added_time: string;
   friendtype: string;
   line_friend_id: string;
@@ -60,7 +60,7 @@ export interface LmeApiFriendRow {
 
 type QueryParams = Record<string, string | number | undefined>;
 
-export interface LmeApiOptions {
+export interface SourceApiOptions {
   apiKey: string;
   readPerMinute?: number;
   fetchImpl?: typeof fetch;
@@ -73,7 +73,7 @@ export class LmePublicApi {
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
 
-  constructor(opts: LmeApiOptions) {
+  constructor(opts: SourceApiOptions) {
     if (!KEY_RE.test(opts.apiKey)) {
       throw new LmeApiError("LME_API_KEY の形式が不正です（lme_live_sk_ + 32桁の16進数）", null);
     }
@@ -149,7 +149,7 @@ export class LmePublicApi {
     const items: T[] = [];
     let page = 1;
     for (;;) {
-      const res = await this.get<{ data: Record<string, T[]>; pagination?: LmeApiPagination }>(path, { ...params, page, limit: 500 });
+      const res = await this.get<{ data: Record<string, T[]>; pagination?: SourceApiPagination }>(path, { ...params, page, limit: 500 });
       const rows = res.data?.[field];
       if (!Array.isArray(rows)) throw new LmeApiError(`応答に data.${field} がありません`, 200);
       items.push(...rows);
@@ -197,11 +197,11 @@ export class LmePublicApi {
   }
 
   /** /friends は data.total_pages 方式（pagination 封筒ではない）。 */
-  async friends(filters: QueryParams = {}, onPage?: (page: number, totalPages: number) => void): Promise<LmeApiFriendRow[]> {
-    const all: LmeApiFriendRow[] = [];
+  async friends(filters: QueryParams = {}, onPage?: (page: number, totalPages: number) => void): Promise<SourceApiFriendRow[]> {
+    const all: SourceApiFriendRow[] = [];
     let page = 1;
     for (;;) {
-      const res = await this.get<{ data: { total_items: number; total_pages: number; friend_detail: LmeApiFriendRow[] } }>("/friends", {
+      const res = await this.get<{ data: { total_items: number; total_pages: number; friend_detail: SourceApiFriendRow[] } }>("/friends", {
         ...filters,
         page,
         limit: 500,

@@ -48,6 +48,9 @@ export interface Lme2HarnessConfig {
   };
 }
 
+/** 変換時の扱い（Lステップ版と同じ名前で共通部分から参照する） */
+export type MigrationOptions = Lme2HarnessConfig["options"];
+
 export const DEFAULT_CONFIG: Lme2HarnessConfig = {
   snapshot_dir: "./snapshot",
   out_dir: "./out",

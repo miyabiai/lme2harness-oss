@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { buttonsToText, isEventRecord, messageToLogParts } from "../src/mapping/messages.js";
 import { conversationHandlingStatus } from "../src/lme/source.js";
-import type { LmeMessage } from "../src/lme/types.js";
+import type { SourceMessage } from "../src/source/types.js";
 
 const base = { sender: "bot" as const, sent_at: "2026-08-13 20:52:58" };
 
 describe("会話ではない記録", () => {
   it("ステップ配信の開始記録（scenario の JSON 文字列）は入れない", () => {
-    const m: LmeMessage = { ...base, message_type: "scenario", content: '{"scenario_name":"L1_LINE登録","start_day":null,"start_time":null,"from":"6002"}', source: { type: "scenario", name: null } };
+    const m: SourceMessage = { ...base, message_type: "scenario", content: '{"scenario_name":"L1_LINE登録","start_day":null,"start_time":null,"from":"6002"}', source: { type: "scenario", name: null } };
     expect(isEventRecord(m)).toBe(true);
     expect(messageToLogParts(m)).toEqual([]);
   });

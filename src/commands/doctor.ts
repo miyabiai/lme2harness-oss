@@ -8,7 +8,7 @@ import { d1Query } from "../d1/wrangler.js";
 import { d1Options, loadEnv } from "./shared.js";
 import { TOKEN_PATH } from "./login.js";
 import * as log from "../log.js";
-import type { LmeBot } from "../lme/types.js";
+import type { SourceBot } from "../source/types.js";
 
 /**
  * 移行を始める前の点検。上から順に、つまずきやすい所を1つずつ確かめて
@@ -51,7 +51,7 @@ export async function runDoctor(): Promise<Check[]> {
     push({ label: "エルメ（移行元アカウント）", ok: false, hint: "`lme2harness login` をもう一度実行して移行元を選んでください" });
   } else {
     try {
-      const res = await mcp.call<{ bots?: LmeBot[] }>("list_bots", {});
+      const res = await mcp.call<{ bots?: SourceBot[] }>("list_bots", {});
       const bot = (res.bots ?? []).find((b) => b.id === config.lme_bot_id);
       mcpOk = Boolean(bot);
       push({

@@ -1,5 +1,5 @@
-import type { LmeMessage } from "../lme/types.js";
-import { convertLmeText } from "./text.js";
+import type { SourceMessage } from "../source/types.js";
+import { convertSourceText } from "./text.js";
 import { isHttpUrl } from "../util.js";
 
 /**
@@ -29,7 +29,7 @@ const EVENT_TYPES = new Set(["stop_scenario", "start_scenario", "scenario_empty_
  * message_type=scenario（中身は {"scenario_name":…,"from":…} の JSON 文字列）や
  * stop_scenario / scenario_empty_step として会話履歴に混ぜて返す（2026-10 実測）。
  */
-export function isEventRecord(m: LmeMessage): boolean {
+export function isEventRecord(m: SourceMessage): boolean {
   const type = (m.message_type || "").toLowerCase();
   if (EVENT_TYPES.has(type)) return true;
   if (typeof m.content === "string" && m.content.startsWith("{")) {
@@ -55,7 +55,7 @@ export function buttonsToText(content: unknown): string {
     const lines: string[] = [];
     for (const key of ["title", "text"]) {
       const v = card[key];
-      if (typeof v === "string" && v.trim()) lines.push(convertLmeText(v).text);
+      if (typeof v === "string" && v.trim()) lines.push(convertSourceText(v).text);
     }
     const labels = (Array.isArray(card.buttons) ? card.buttons : [])
       .map((b) => (b && typeof b === "object" ? (b as { label?: unknown }).label : null))
@@ -75,7 +75,7 @@ function partFromTyped(type: string, content: unknown): LogPart | null {
   const t = (type || "text").toLowerCase();
   if (t === "text") {
     if (typeof content !== "string") return content == null ? null : { message_type: "text", content: JSON.stringify(content) };
-    return { message_type: "text", content: convertLmeText(content).text };
+    return { message_type: "text", content: convertSourceText(content).text };
   }
   if (t === "image") {
     if (typeof content === "string" && isHttpUrl(content)) return { message_type: "image", content: imageMessageContent(content) };
@@ -118,7 +118,7 @@ function partFromTyped(type: string, content: unknown): LogPart | null {
   return { message_type: t, content: label };
 }
 
-export function messageToLogParts(m: LmeMessage): LogPart[] {
+export function messageToLogParts(m: SourceMessage): LogPart[] {
   if (isEventRecord(m)) return [];
   const type = (m.message_type || "text").toLowerCase();
   const content = m.content;
@@ -136,7 +136,7 @@ export function messageToLogParts(m: LmeMessage): LogPart[] {
   }
   if (["template", "scenario", "broadcast", "action", "event"].includes(type)) {
     if (content == null) return [];
-    if (typeof content === "string") return [{ message_type: "text", content: convertLmeText(content).text }];
+    if (typeof content === "string") return [{ message_type: "text", content: convertSourceText(content).text }];
     return [{ message_type: "text", content: JSON.stringify(content).slice(0, 2000) }];
   }
   const part = partFromTyped(type, content);
@@ -144,7 +144,7 @@ export function messageToLogParts(m: LmeMessage): LogPart[] {
 }
 
 /** エルメの送信元情報 → messages_log.source。未対応判定は source='manual' を「人の返信」とみなす。 */
-export function outgoingSource(m: LmeMessage): string {
+export function outgoingSource(m: SourceMessage): string {
   const src = (m.source ?? {}) as { type?: string | null; name?: string | null };
   const t = (src.type ?? "").toLowerCase();
   if (t.includes("scenario") || t.includes("step")) return "scenario";

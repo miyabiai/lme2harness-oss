@@ -1,9 +1,9 @@
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { PlanContext } from "./context.js";
-import type { LmeSalon } from "../lme/types.js";
+import type { SourceSalon } from "../source/types.js";
 import { harnessId } from "../harness/ids.js";
-import { lmeToHarnessJst, parseLmeDate, toIsoUtc } from "../harness/time.js";
-import { courseName, formAnswersText, nonNegative, parseDateBooking, type LmeCourse } from "./bookings.js";
+import { sourceToHarnessJst, parseSourceDate, toIsoUtc } from "../harness/time.js";
+import { courseName, formAnswersText, nonNegative, parseDateBooking, type SourceCourse } from "./bookings.js";
 
 /**
  * エルメ「レッスン予約」→ L Harness の「イベント予約」（events / event_slots / event_bookings）。
@@ -21,16 +21,16 @@ import { courseName, formAnswersText, nonNegative, parseDateBooking, type LmeCou
  * 並行運用中に L Harness から新しい予約を受け付けたりリマインドを送ったりしないよう、
  * イベントは非公開で作り、リマインドの予定は作らない（イベントを管理画面で保存し直すと作られる）。
  */
-interface LmeLessonDetail {
+interface SourceLessonDetail {
   id: number;
   calendar_name?: string;
   line_name?: string;
-  courses?: LmeCourse[];
+  courses?: SourceCourse[];
   booking_settings?: { approve_type?: string };
   created_at?: string;
 }
 
-interface LmeLessonBooking {
+interface SourceLessonBooking {
   id: number;
   reception_id?: number | null;
   course_id?: number | null;
@@ -58,7 +58,7 @@ export function lessonBookingStatus(raw: string | null | undefined, startMs: num
 type EventByCourse = Map<number, { eventId: string; duration: number }>;
 
 export function mapLessons(store: SnapshotStore, ctx: PlanContext, nowMs = Date.now()): void {
-  const calendars = store.readJson<LmeSalon[]>("lesson_calendars.json") ?? [];
+  const calendars = store.readJson<SourceSalon[]>("lesson_calendars.json") ?? [];
   const r = ctx.report("lessons", "レッスン予約");
   r.source = calendars.length;
   if (!calendars.length) return;
@@ -66,11 +66,11 @@ export function mapLessons(store: SnapshotStore, ctx: PlanContext, nowMs = Date.
   let noFriend = 0;
   let unknown = 0;
   for (const cal of calendars) {
-    const d = (cal.detail ?? {}) as LmeLessonDetail;
-    const createdAt = lmeToHarnessJst(d.created_at, ctx.now);
+    const d = (cal.detail ?? {}) as SourceLessonDetail;
+    const createdAt = sourceToHarnessJst(d.created_at, ctx.now);
     const courses = addLessonEvents(cal.id, d, createdAt, ctx);
     r.migrated += (d.courses ?? []).length;
-    const skipped = addLessonBookings(cal.id, (cal.bookings ?? []) as LmeLessonBooking[], courses, createdAt, ctx, nowMs);
+    const skipped = addLessonBookings(cal.id, (cal.bookings ?? []) as SourceLessonBooking[], courses, createdAt, ctx, nowMs);
     noFriend += skipped.noFriend;
     unknown += skipped.unknown;
   }
@@ -83,7 +83,7 @@ export function mapLessons(store: SnapshotStore, ctx: PlanContext, nowMs = Date.
 }
 
 /** コース → events（非公開で作る） */
-function addLessonEvents(calendarId: number, d: LmeLessonDetail, createdAt: string, ctx: PlanContext): EventByCourse {
+function addLessonEvents(calendarId: number, d: SourceLessonDetail, createdAt: string, ctx: PlanContext): EventByCourse {
   const requiresApproval = d.booking_settings?.approve_type && d.booking_settings.approve_type !== "auto" ? 1 : 0;
   const courses: EventByCourse = new Map();
   (d.courses ?? []).forEach((c, i) => {
@@ -121,7 +121,7 @@ function addLessonEvents(calendarId: number, d: LmeLessonDetail, createdAt: stri
 /** 予約 → event_slots（予約がある枠だけ）/ event_bookings。移せなかった件数を返す */
 function addLessonBookings(
   calendarId: number,
-  bookings: LmeLessonBooking[],
+  bookings: SourceLessonBooking[],
   courses: EventByCourse,
   createdAt: string,
   ctx: PlanContext,
@@ -154,7 +154,7 @@ function addLessonBookings(
       });
     }
     const friendId = ctx.friendId(b.lmessage_friend_id);
-    const at = toIsoUtc(parseLmeDate(b.created_at) ?? when.start);
+    const at = toIsoUtc(parseSourceDate(b.created_at) ?? when.start);
     const answers = formAnswersText(b.form_answers);
     ctx.add({
       table: "event_bookings",

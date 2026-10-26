@@ -1,5 +1,5 @@
 import type { Row } from "../sql/render.js";
-import type { Lme2HarnessConfig } from "../config.js";
+import type { MigrationOptions } from "../config.js";
 import { harnessId } from "../harness/ids.js";
 import { nowJst } from "../harness/time.js";
 
@@ -19,7 +19,7 @@ export interface EntityReport {
 
 /** 移したステップ（L Harness に行を作ったものだけ）。進行状態の復元に使う */
 export interface MigratedStep {
-  lmeStepId: number;
+  sourceStepId: number;
   orderNumber: number;
   /** このステップの最後の行の step_order（「ここまで送った」ときの current_step_order） */
   lastOrder: number;
@@ -60,7 +60,7 @@ export class PlanContext {
 
   constructor(
     readonly lineAccountId: string,
-    readonly options: Lme2HarnessConfig["options"],
+    readonly options: MigrationOptions,
     existingTags: Map<string, string> = new Map(),
     now = nowJst(),
   ) {
@@ -86,11 +86,11 @@ export class PlanContext {
     if (!r.notes.includes(note)) r.notes.push(note);
   }
 
-  friendId(lmeFriendId: number): string {
-    let id = this.friendIds.get(lmeFriendId);
+  friendId(sourceFriendId: number): string {
+    let id = this.friendIds.get(sourceFriendId);
     if (!id) {
-      id = harnessId("friend", lmeFriendId);
-      this.friendIds.set(lmeFriendId, id);
+      id = harnessId("friend", sourceFriendId);
+      this.friendIds.set(sourceFriendId, id);
     }
     return id;
   }

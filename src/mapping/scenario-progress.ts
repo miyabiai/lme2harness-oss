@@ -1,7 +1,7 @@
-import type { LmeMessage } from "../lme/types.js";
+import type { SourceMessage } from "../source/types.js";
 import type { MigratedStep, ScenarioStepsInfo } from "./context.js";
 import { messageToLogParts } from "./messages.js";
-import { JST_OFFSET_MS, parseLmeDate } from "../harness/time.js";
+import { JST_OFFSET_MS, parseSourceDate } from "../harness/time.js";
 import { isHttpUrl } from "../util.js";
 
 /**
@@ -76,7 +76,7 @@ function stepMatches(step: MigratedStep, parts: Array<{ message_type: string; co
 }
 
 /** シナリオの送信記録か（開始・停止のイベント記録は除く） */
-function isStepSend(m: LmeMessage, scenarioName: string): boolean {
+function isStepSend(m: SourceMessage, scenarioName: string): boolean {
   if (m.sender !== "bot") return false;
   const src = (m.source ?? {}) as { type?: string | null; name?: string | null };
   const isScenario = (m.message_type ?? "").toLowerCase() === "scenario" || (src.type ?? "").toLowerCase().includes("scenario");
@@ -86,7 +86,7 @@ function isStepSend(m: LmeMessage, scenarioName: string): boolean {
 }
 
 /** 「このシナリオを開始した」という記録か（中身は JSON 文字列で scenario_name を持つ） */
-export function isStartEvent(m: LmeMessage, scenarioName: string): boolean {
+export function isStartEvent(m: SourceMessage, scenarioName: string): boolean {
   if (typeof m.content !== "string" || !m.content.startsWith("{")) return false;
   try {
     const j = JSON.parse(m.content) as { scenario_name?: string; start_day?: unknown };
@@ -96,10 +96,10 @@ export function isStartEvent(m: LmeMessage, scenarioName: string): boolean {
   }
 }
 
-export function restoreProgress(info: ScenarioStepsInfo, messages: LmeMessage[], startedAtMs: number | null): ProgressResult | null {
+export function restoreProgress(info: ScenarioStepsInfo, messages: SourceMessage[], startedAtMs: number | null): ProgressResult | null {
   const sends = messages
     .filter((m) => isStepSend(m, info.name))
-    .map((m) => ({ at: parseLmeDate(m.sent_at), parts: messageToLogParts(m) }))
+    .map((m) => ({ at: parseSourceDate(m.sent_at), parts: messageToLogParts(m) }))
     .filter((m) => m.at !== null && (startedAtMs === null || m.at >= startedAtMs - 60_000))
     .sort((a, b) => a.at! - b.at!);
 
@@ -124,7 +124,7 @@ export function restoreProgress(info: ScenarioStepsInfo, messages: LmeMessage[],
   const covered =
     messages.some((m) => isStartEvent(m, info.name)) ||
     (startedAtMs !== null && messages.some((m) => {
-      const t = parseLmeDate(m.sent_at);
+      const t = parseSourceDate(m.sent_at);
       return t !== null && t <= startedAtMs;
     }));
   return covered ? { lastIndex: -1, lastAt: null, matched: 0 } : null;

@@ -1,6 +1,6 @@
 import type { LmeSource } from "../lme/source.js";
 import type { SnapshotStore } from "./store.js";
-import type { LmeBot, LmeConversationIndexEntry, LmeFriendRow, SnapshotMeta } from "../lme/types.js";
+import type { SourceBot, SourceConversationIndexEntry, SourceFriendRow, SnapshotMeta } from "../source/types.js";
 import * as log from "../log.js";
 import { chunked } from "../util.js";
 
@@ -22,7 +22,7 @@ export interface ExtractOptions {
  * 1) マスタ（タグ・項目・ステータス・シナリオ・テンプレ・フォーム・自動応答・あいさつ・リッチメニュー・流入経路・予約・商品）
  * 2) 友だち一覧 → 1人ずつ（詳細＋会話）を friends/<id>.json へ
  */
-export async function extractSnapshot(source: LmeSource, store: SnapshotStore, bot: LmeBot, opts: ExtractOptions): Promise<SnapshotMeta> {
+export async function extractSnapshot(source: LmeSource, store: SnapshotStore, bot: SourceBot, opts: ExtractOptions): Promise<SnapshotMeta> {
   const prev = store.meta();
   const meta: SnapshotMeta = {
     version: 1,
@@ -127,7 +127,7 @@ async function extractMasters(source: LmeSource, store: SnapshotStore, meta: Sna
   await extractConversationIndex(source, store);
 }
 
-async function extractConversationIndex(source: LmeSource, store: SnapshotStore): Promise<Map<number, LmeConversationIndexEntry> | null> {
+async function extractConversationIndex(source: LmeSource, store: SnapshotStore): Promise<Map<number, SourceConversationIndexEntry> | null> {
   const convIndex = await step("会話一覧（確認状態・対応ステータス）", () => source.conversationIndex());
   if (convIndex) store.writeJson("conversation_index.json", Object.fromEntries(convIndex));
   return convIndex;
@@ -135,7 +135,7 @@ async function extractConversationIndex(source: LmeSource, store: SnapshotStore)
 
 async function extractFriends(source: LmeSource, store: SnapshotStore, meta: SnapshotMeta, opts: ExtractOptions): Promise<void> {
   log.info("友だち一覧を取得します");
-  let rows = store.readJson<LmeFriendRow[]>("friends/index.json");
+  let rows = store.readJson<SourceFriendRow[]>("friends/index.json");
   if (!rows || !opts.resume) {
     rows = await source.friendRows((done, total) => {
       if (done % 1000 === 0 || done >= total) log.debug(`一覧 ${Math.min(done, total)}/${total}`);
@@ -146,7 +146,7 @@ async function extractFriends(source: LmeSource, store: SnapshotStore, meta: Sna
   meta.friend_total = rows.length;
   log.info(`  ✓ 友だち ${rows.length}人`);
 
-  const saved = store.readJson<Record<string, LmeConversationIndexEntry>>("conversation_index.json");
+  const saved = store.readJson<Record<string, SourceConversationIndexEntry>>("conversation_index.json");
   const convIndex = saved && opts.only === "friends" ? new Map(Object.entries(saved).map(([k, v]) => [Number(k), v])) : await extractConversationIndex(source, store);
 
   const pending = rows.filter((r) => !(opts.resume && store.hasFriend(r.lmessage_friend_id)));

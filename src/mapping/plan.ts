@@ -8,7 +8,7 @@ import { mapFriends } from "./friends.js";
 import { mapBookings } from "./bookings.js";
 import { mapLessons } from "./lessons.js";
 import { chunkStatements, renderInsert, type Row, type SqlChunk } from "../sql/render.js";
-import type { LmeRichMenu } from "../lme/types.js";
+import type { SourceRichMenu } from "../source/types.js";
 
 /** テーブルの投入順（外部キーの親 → 子）。 */
 const TABLE_ORDER = [
@@ -76,7 +76,7 @@ export function buildPlan(store: SnapshotStore, opts: BuildPlanOptions): { ctx: 
 }
 
 function noteUnmigrated(store: SnapshotStore, ctx: PlanContext): void {
-  const rich = store.readJson<LmeRichMenu[]>("rich_menus.json") ?? [];
+  const rich = store.readJson<SourceRichMenu[]>("rich_menus.json") ?? [];
   const r = ctx.report("rich_menus", "リッチメニュー");
   r.source = rich.length;
   r.level = rich.length ? "partial" : "full";

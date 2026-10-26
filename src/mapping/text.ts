@@ -18,7 +18,7 @@ const NAME_RE = /\[(NAME|LINE_NAME|USER_NAME|name)\]/g;
 const BRACE_NAME_RE = /(?<!\{)\{name\}(?!\})/g;
 const ANY_TAG_RE = /\[[A-Z_]{3,}[A-Za-z0-9_]*\]/g;
 
-export function convertLmeText(input: string, friendInfoAsName = true): ConvertResult {
+export function convertSourceText(input: string, friendInfoAsName = true): ConvertResult {
   let replaced = 0;
   let text = input.replace(SYSTEM_NAME_RE, () => {
     replaced += 1;

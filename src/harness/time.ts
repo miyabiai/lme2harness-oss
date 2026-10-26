@@ -9,7 +9,7 @@
 export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 /** エルメの日時文字列を epoch ms に変換する。オフセット無しは JST とみなす。日付だけなら 00:00 JST。 */
-export function parseLmeDate(value: string | null | undefined): number | null {
+export function parseSourceDate(value: string | null | undefined): number | null {
   if (!value) return null;
   const s = value.trim();
   if (!s) return null;
@@ -54,7 +54,7 @@ export function nowJst(): string {
 }
 
 /** エルメ日時 → L Harness JST 文字列。変換できなければ fallback（既定は今）。 */
-export function lmeToHarnessJst(value: string | null | undefined, fallback?: string): string {
-  const t = parseLmeDate(value);
+export function sourceToHarnessJst(value: string | null | undefined, fallback?: string): string {
+  const t = parseSourceDate(value);
   return t === null ? fallback ?? nowJst() : toHarnessJst(t);
 }

@@ -1,8 +1,8 @@
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { PlanContext } from "./context.js";
-import type { LmeSalon } from "../lme/types.js";
+import type { SourceSalon } from "../source/types.js";
 import { harnessId } from "../harness/ids.js";
-import { lmeToHarnessJst, parseLmeDate, toIsoUtc } from "../harness/time.js";
+import { sourceToHarnessJst, parseSourceDate, toIsoUtc } from "../harness/time.js";
 
 /**
  * エルメ「サロン・面談予約」→ L Harness の予約（menus / staff / staff_menus / staff_shifts / bookings）。
@@ -16,7 +16,7 @@ import { lmeToHarnessJst, parseLmeDate, toIsoUtc } from "../harness/time.js";
  */
 
 /** エルメのコース（サロン予約・レッスン予約で共通の形） */
-export interface LmeCourse {
+export interface SourceCourse {
   id: number;
   course_name?: string | null;
   system_name?: string | null;
@@ -27,7 +27,7 @@ export interface LmeCourse {
   visible?: boolean;
 }
 
-interface LmeStaff {
+interface SourceStaff {
   id: number;
   staff_name?: string | null;
   staff_image?: string | null;
@@ -36,22 +36,22 @@ interface LmeStaff {
   course_ids?: number[] | string | null;
 }
 
-interface LmeSalonDetail {
+interface SourceSalonDetail {
   id: number;
   calendar_name?: string;
   manager_name?: string;
   use_course?: boolean;
   use_staff?: boolean;
   setting_time_unit?: number;
-  menus?: Array<{ menu_name?: string | null; courses?: LmeCourse[] }>;
-  staff?: LmeStaff[];
+  menus?: Array<{ menu_name?: string | null; courses?: SourceCourse[] }>;
+  staff?: SourceStaff[];
   booking_settings?: { approve_type?: string };
   time_free?: { before_minutes?: number | null; after_minutes?: number | null };
   shifts?: unknown;
   created_at?: string;
 }
 
-interface LmeBooking {
+interface SourceBooking {
   // MCP get_salon_bookings（2026-10 実測）
   id: number;
   course_id?: number | null;
@@ -74,18 +74,18 @@ export function parseDateBooking(value: string | null | undefined): { start: num
   if (!value) return null;
   const m = value.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})(?::\d{2})?\s*[~〜-]\s*(?:(\d{4}-\d{2}-\d{2})\s+)?(\d{1,2}:\d{2})?/);
   if (!m) {
-    const t = parseLmeDate(value);
+    const t = parseSourceDate(value);
     return t === null ? null : { start: t, end: null };
   }
   const [, d1, t1, d2, t2] = m;
-  const start = parseLmeDate(`${d1} ${t1.padStart(5, "0")}:00`);
+  const start = parseSourceDate(`${d1} ${t1.padStart(5, "0")}:00`);
   if (start === null) return null;
-  const end = t2 ? parseLmeDate(`${d2 ?? d1} ${t2.padStart(5, "0")}:00`) : null;
+  const end = t2 ? parseSourceDate(`${d2 ?? d1} ${t2.padStart(5, "0")}:00`) : null;
   return { start, end };
 }
 
 /** コースの表示名（管理名 → システム名 → 「コースN」） */
-export function courseName(c: LmeCourse): string {
+export function courseName(c: SourceCourse): string {
   return (c.course_name ?? c.system_name ?? `コース${c.id}`).trim();
 }
 
@@ -99,13 +99,13 @@ export function formAnswersText(answers: Array<{ question?: string; answer?: unk
   return (answers ?? []).map((a) => `${a.question ?? ""}: ${a.answer ?? ""}`).join("\n");
 }
 
-function courseIds(staff: LmeStaff): number[] {
+function courseIds(staff: SourceStaff): number[] {
   if (Array.isArray(staff.course_ids)) return staff.course_ids.map(Number).filter(Number.isFinite);
   if (typeof staff.course_ids === "string") return staff.course_ids.split(",").map((s) => Number(s.trim())).filter(Number.isFinite);
   return [];
 }
 
-function bookingStatus(b: LmeBooking): "requested" | "confirmed" | "cancelled" | null {
+function bookingStatus(b: SourceBooking): "requested" | "confirmed" | "cancelled" | null {
   const st = String(b.status ?? "").toLowerCase();
   if (!st) return null;
   if (st.includes("cancel")) return "cancelled";
@@ -116,7 +116,7 @@ function bookingStatus(b: LmeBooking): "requested" | "confirmed" | "cancelled" |
 
 /** サロン 1 つ分の共通値 */
 interface SalonInfo {
-  lmeId: number;
+  sourceId: number;
   name: string;
   createdAt: string;
   /** 予約後の空き時間（分） */
@@ -127,23 +127,23 @@ interface SalonInfo {
 type MenuByCourse = Map<number, { id: string; duration: number; price: number }>;
 
 export function mapBookings(store: SnapshotStore, ctx: PlanContext): void {
-  const salons = store.readJson<LmeSalon[]>("salons.json") ?? [];
+  const salons = store.readJson<SourceSalon[]>("salons.json") ?? [];
   const r = ctx.report("bookings", "予約（サロン・面談）");
   r.source = salons.length;
   if (!salons.length) return;
   r.level = "partial";
   const nowMs = Date.now();
   for (const s of salons) {
-    const d = (s.detail ?? {}) as LmeSalonDetail;
+    const d = (s.detail ?? {}) as SourceSalonDetail;
     const salon: SalonInfo = {
-      lmeId: s.id,
+      sourceId: s.id,
       name: d.calendar_name ?? s.calendar_name ?? `サロン${s.id}`,
-      createdAt: lmeToHarnessJst(d.created_at, ctx.now),
+      createdAt: sourceToHarnessJst(d.created_at, ctx.now),
       bufferAfter: Number(d.time_free?.after_minutes ?? 0) || 0,
     };
     const menus = addSalonMenus(d, salon, ctx);
     const staffIds = addSalonStaff(d, salon, menus, ctx);
-    const bookings = (s.bookings ?? []) as LmeBooking[];
+    const bookings = (s.bookings ?? []) as SourceBooking[];
     const migratedBookings = addSalonBookings(bookings, salon, menus, staffIds, ctx, nowMs);
     r.migrated += 1;
     if (bookings.length) r.notes.push(`「${salon.name}」の予約 ${bookings.length}件中 ${migratedBookings}件を移しました`);
@@ -154,12 +154,12 @@ export function mapBookings(store: SnapshotStore, ctx: PlanContext): void {
 }
 
 /** コース → menus */
-function addSalonMenus(d: LmeSalonDetail, salon: SalonInfo, ctx: PlanContext): MenuByCourse {
+function addSalonMenus(d: SourceSalonDetail, salon: SalonInfo, ctx: PlanContext): MenuByCourse {
   const menus: MenuByCourse = new Map();
   let sort = 0;
   for (const m of d.menus ?? []) {
     for (const c of m.courses ?? []) {
-      const menuId = harnessId("menu", salon.lmeId, c.id);
+      const menuId = harnessId("menu", salon.sourceId, c.id);
       const duration = Math.max(5, Number(c.duration_minutes ?? d.setting_time_unit ?? 30) || 30);
       const price = nonNegative(c.amount);
       if (!menus.has(c.id)) menus.set(c.id, { id: menuId, duration, price });
@@ -189,11 +189,11 @@ function addSalonMenus(d: LmeSalonDetail, salon: SalonInfo, ctx: PlanContext): M
 }
 
 /** スタッフ → staff / staff_menus（個人タイプでも「運営者」が 1 人いる）。作った staff.id の並びを返す */
-function addSalonStaff(d: LmeSalonDetail, salon: SalonInfo, menus: MenuByCourse, ctx: PlanContext): string[] {
+function addSalonStaff(d: SourceSalonDetail, salon: SalonInfo, menus: MenuByCourse, ctx: PlanContext): string[] {
   const staffList = d.staff?.length ? d.staff : [{ id: 0, staff_name: d.manager_name ?? "担当", is_all_course: true }];
   const staffIds: string[] = [];
   staffList.forEach((st, i) => {
-    const staffId = harnessId("staff", salon.lmeId, st.id);
+    const staffId = harnessId("staff", salon.sourceId, st.id);
     staffIds.push(staffId);
     const name = (st.staff_name ?? `スタッフ${st.id}`).trim();
     ctx.add({
@@ -231,13 +231,13 @@ function addSalonStaff(d: LmeSalonDetail, salon: SalonInfo, menus: MenuByCourse,
 }
 
 /** 予約 → bookings。移した件数を返す */
-function addSalonBookings(bookings: LmeBooking[], salon: SalonInfo, menus: MenuByCourse, staffIds: string[], ctx: PlanContext, nowMs: number): number {
+function addSalonBookings(bookings: SourceBooking[], salon: SalonInfo, menus: MenuByCourse, staffIds: string[], ctx: PlanContext, nowMs: number): number {
   let migrated = 0;
   let noFriend = 0;
   for (const b of bookings) {
     const friendId = b.lmessage_friend_id && ctx.friendIds.has(b.lmessage_friend_id) ? ctx.friendId(b.lmessage_friend_id) : null;
     const menu = typeof b.course_id === "number" ? menus.get(b.course_id) : undefined;
-    const staffId = typeof b.staff_id === "number" ? harnessId("staff", salon.lmeId, b.staff_id) : staffIds[0];
+    const staffId = typeof b.staff_id === "number" ? harnessId("staff", salon.sourceId, b.staff_id) : staffIds[0];
     const when = parseDateBooking(b.date_booking);
     const status = bookingStatus(b);
     if (!friendId) {
@@ -252,12 +252,12 @@ function addSalonBookings(bookings: LmeBooking[], salon: SalonInfo, menus: MenuB
     const endMs = when.end ?? startMs + menu.duration * 60_000;
     // 過去の確定予約は「完了」にする（期限切れ処理や通知の対象にしない）
     const finalStatus = status === "confirmed" && startMs < nowMs ? "completed" : status;
-    const requestedAt = toIsoUtc(parseLmeDate(b.created_at) ?? startMs);
+    const requestedAt = toIsoUtc(parseSourceDate(b.created_at) ?? startMs);
     const answers = formAnswersText(b.form_answers);
     ctx.add({
       table: "bookings",
       values: {
-        id: harnessId("booking", salon.lmeId, b.id),
+        id: harnessId("booking", salon.sourceId, b.id),
         line_account_id: ctx.lineAccountId,
         friend_id: friendId,
         staff_id: staffId,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { matchRichMenus } from "../src/commands/richmenu.js";
-import type { LmeRichMenu } from "../src/lme/types.js";
+import type { SourceRichMenu } from "../src/source/types.js";
 
 const line = (id: string, name: string, areasCount: number, h = 1686) => ({ richMenuId: id, name, chatBarText: "メニュー", size: { width: 2500, height: h }, areasCount, isCurrentDefault: false, adminManaged: false, adminInfo: null });
-const elme = (name: string, areas: number, h = 1686): LmeRichMenu => ({ id: 1, name, width: 2500, height: h, detail: { areas: Array.from({ length: areas }, () => ({ action_type: "URL" })) } });
+const elme = (name: string, areas: number, h = 1686): SourceRichMenu => ({ id: 1, name, width: 2500, height: h, detail: { areas: Array.from({ length: areas }, () => ({ action_type: "URL" })) } });
 
 describe("リッチメニューの突き合わせ", () => {
   it("名前・大きさ・ボタン数が一致する1つに対応させる", () => {
