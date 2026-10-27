@@ -109,7 +109,7 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
       sr.level = "partial";
       sr.notes.push(`配信中の ${stats.scenarioUnknown}人は、エルメの会話履歴が開始時点まで残っておらず位置が分からないため「一時停止」で入れました。L Harness の画面からは再開できないので、続きが必要な人は手動で送るか、シナリオに入れ直してください`);
     }
-    if (stats.scenarioStopped) sr.notes.push(`エルメで配信を止めた ${stats.scenarioStopped}人は「一時停止」で入れました（前回の移行で配信中として入れた人も止まります）`);
+    if (stats.scenarioStopped) sr.notes.push(`エルメで配信を止めた ${stats.scenarioStopped}人は「一時停止」で入れました（前回の移行で配信中として入れた人も止まります。L Harness でまだ有効にしていないシナリオに限ります）`);
     if (stats.scenarioRestored && !ctx.options.activate_automations) sr.notes.push("L Harness で既に有効にしているシナリオに新しく入る人は、流す時点で「一時停止」にします（自動では送りません）");
   }
   mr.notes.push("エルメ側の画像・ファイルはエルメの URL を参照しています（エルメ解約後は開けなくなります）");
@@ -331,7 +331,7 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
       continue;
     }
     const startedMs = parseSourceDate(sc.started_at);
-    // 停止中の人は「一時停止」で入れる（前回の移行で配信中として入れた人も、ここで止まる）
+    // 停止中の人は「一時停止」で入れる（前回の移行で配信中として入れた人も、L Harness でまだ有効にしていないシナリオならここで止まる）
     const progress: FriendScenarioProgress = sc.status === "following" ? followingProgress(sourceScenarioId, startedMs, f, ctx)
       : sc.status === "completed" ? { status: "completed", currentOrder: 9999, nextAt: null }
       : { status: "paused", currentOrder: -1, nextAt: null };

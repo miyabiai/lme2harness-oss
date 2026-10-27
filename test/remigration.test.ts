@@ -165,7 +165,7 @@ describe("移行し直しても L Harness で有効にした状態を変えな�
     db.close();
   });
 
-  it("エルメで配信を止めた人は、前回「配信中」で入れていても一時停止にする（シナリオを有効にしても送られない）", () => {
+  it("エルメで配信を止めた人は、前回「配信中」で入れていても一時停止にする（L Harness でまだ有効にしていないシナリオ）", () => {
     const db = makeDb();
     applyAll(db, plan().rowsByTable);
     const stopped = storeWith((f) => { f.detail.scenarios[0].status = "stopped"; });
