@@ -12,7 +12,8 @@
  *     L Messageデータ転送（tag の付与/解除・friend_info の設定/消去）
  *     → D1 で友だちを引き、L Harness API でタグ付け/解除・メタデータ更新
  *
- * 10秒以内に 2xx を返す（エルメ側の要件）。重い処理は waitUntil で続ける。
+ * 10秒以内に 2xx を返す（エルメ側の要件）。L Harness へ渡せたときだけ 2xx を返し、渡せなければ 502 を返して
+ * エルメが再送できるようにする。RESPONSE_BUDGET_MS（既定 8 秒）で終わらない分は waitUntil で続けて 2xx を返す。
  *
  * LINE 転送には署名が付かない（エルメの仕様）。受信パスのトークンが唯一の鍵なので、
  * X-Lme-Timestamp が古いもの（盗み見た通信の使い回し）も受け付けない。
@@ -36,6 +37,8 @@ export interface Env {
   /** X-Lme-Timestamp と今の時刻のずれの許容（秒）。既定 300。"0" で確認しない */
   MAX_CLOCK_SKEW_SECONDS?: string;
   LME_API_KEY?: string;
+  /** 返事を待たせる上限（ミリ秒）。既定 8000（エルメの 10 秒に収める） */
+  RESPONSE_BUDGET_MS?: string;
   PATH_TOKEN_LINE: string;
   PATH_TOKEN_LMESSAGE: string;
 }
@@ -43,6 +46,7 @@ export interface Env {
 const TOKEN_RE = /^[A-Za-z0-9]{32,128}$/;
 const TAG_NAME_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_CLOCK_SKEW_SECONDS = 300;
+const DEFAULT_RESPONSE_BUDGET_MS = 8000;
 
 interface LmeEvent {
   lmessage_friend_id?: number;
@@ -85,12 +89,15 @@ export function acceptedLmeSecrets(env: Env, now = Date.now()): string[] {
   return secrets;
 }
 
+/** 渡し済みの配信か（重複排除を設定したときだけ）。渡し済みの印は L Harness へ渡せた後に付ける */
 async function alreadySeen(env: Env, deliveryId: string | null): Promise<boolean> {
   if (!env.DEDUP || !deliveryId) return false;
-  const key = `lme:${deliveryId}`;
-  if (await env.DEDUP.get(key)) return true;
-  await env.DEDUP.put(key, "1", { expirationTtl: 60 * 60 });
-  return false;
+  return Boolean(await env.DEDUP.get(`lme:${deliveryId}`));
+}
+
+async function markSeen(env: Env, deliveryId: string | null): Promise<void> {
+  if (!env.DEDUP || !deliveryId) return;
+  await env.DEDUP.put(`lme:${deliveryId}`, "1", { expirationTtl: 60 * 60 });
 }
 
 // ---------- L Harness API ----------
@@ -148,14 +155,15 @@ async function resolveTag(env: Env, tagId: number): Promise<string | null> {
   const name = await lmeTagName(env, tagId);
   if (name) {
     const res = await harness(env, "GET", "/api/tags");
-    if (res.ok) {
-      const json = (await res.json()) as { data?: Array<{ id: string; name: string }> | { items?: Array<{ id: string; name: string }> } };
-      const list = Array.isArray(json.data) ? json.data : (json.data?.items ?? []);
-      id = list.find((t) => t.name === name)?.id ?? null;
-      if (!id) {
-        const created = await harness(env, "POST", "/api/tags", { name });
-        if (created.ok) id = ((await created.json()) as { data?: { id?: string } }).data?.id ?? null;
-      }
+    // L Harness が一時的に失敗したときは覚えずに投げる（再送で解決し直す）
+    if (!res.ok) throw new Error(`L Harness のタグ一覧が ${res.status} を返しました`);
+    const json = (await res.json()) as { data?: Array<{ id: string; name: string }> | { items?: Array<{ id: string; name: string }> } };
+    const list = Array.isArray(json.data) ? json.data : (json.data?.items ?? []);
+    id = list.find((t) => t.name === name)?.id ?? null;
+    if (!id) {
+      const created = await harness(env, "POST", "/api/tags", { name });
+      if (!created.ok) throw new Error(`L Harness のタグ作成が ${created.status} を返しました`);
+      id = ((await created.json()) as { data?: { id?: string } }).data?.id ?? null;
     }
   }
   tagCache.set(tagId, { id, at: Date.now() });
@@ -163,7 +171,8 @@ async function resolveTag(env: Env, tagId: number): Promise<string | null> {
 }
 
 // ---------- 経路 A: LINE 生イベントの付け直し転送 ----------
-async function forwardLineEvents(env: Env, rawBody: ArrayBuffer): Promise<void> {
+/** L Harness へ渡せたか（2xx が返ったか）を返す */
+async function forwardLineEvents(env: Env, rawBody: ArrayBuffer): Promise<boolean> {
   let body = rawBody;
   if ((env.STRIP_REPLY_TOKEN ?? "1") !== "0") {
     try {
@@ -182,10 +191,18 @@ async function forwardLineEvents(env: Env, rawBody: ArrayBuffer): Promise<void> 
   });
   if (!res.ok) console.warn(`L Harness /webhook が ${res.status} を返しました`);
   else console.log(`L Harness /webhook へ転送しました (${res.status})`);
+  return res.ok;
 }
 
 // ---------- 経路 B: タグ・友だち情報の反映 ----------
-async function applyLmeEvents(env: Env, events: LmeEvent[]): Promise<void> {
+/** L Harness に反映できなかった出来事の数を返す（友だちが未登録・タグ名が引けないものは再送しても同じなので数えない） */
+async function applyLmeEvents(env: Env, events: LmeEvent[]): Promise<number> {
+  let failed = 0;
+  const check = (res: Response, what: string) => {
+    if (res.ok) return;
+    failed += 1;
+    console.warn(`${what} が ${res.status} を返しました`);
+  };
   for (const ev of events) {
     try {
       const friendId = await findFriendId(env, ev.line_friend_id || undefined, ev.lmessage_friend_id);
@@ -199,21 +216,44 @@ async function applyLmeEvents(env: Env, events: LmeEvent[]): Promise<void> {
           console.warn(`タグを解決できません: lme tag_id=${ev.tag_id}（LME_API_KEY が無いと名前を引けません）`);
           continue;
         }
-        if (ev.action === "add") await harness(env, "POST", `/api/friends/${friendId}/tags`, { tagId });
-        else if (ev.action === "remove") await harness(env, "DELETE", `/api/friends/${friendId}/tags/${tagId}`);
+        if (ev.action === "add") check(await harness(env, "POST", `/api/friends/${friendId}/tags`, { tagId }), "タグ付け");
+        else if (ev.action === "remove") check(await harness(env, "DELETE", `/api/friends/${friendId}/tags/${tagId}`), "タグ外し");
       } else if (ev.type === "friend_info" && typeof ev.field_id === "number" && (env.SYNC_FRIEND_INFO ?? "1") !== "0") {
         const key = `lme_field_${ev.field_id}`;
         const value = ev.action === "clear" ? null : (ev.value ?? null);
-        await harness(env, "PUT", `/api/friends/${friendId}/metadata`, { [key]: value });
+        check(await harness(env, "PUT", `/api/friends/${friendId}/metadata`, { [key]: value }), "友だち情報の反映");
       }
     } catch (e) {
+      failed += 1;
       console.warn(`イベント処理に失敗: ${(e as Error).message}`);
     }
   }
+  return failed;
 }
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/**
+ * L Harness へ渡し終えてから返事をする。渡せたら渡し済みの印を付けて 200、渡せなければ 502（エルメが再送する）。
+ * 返事の上限時間を過ぎたら、残りは waitUntil で続けて 200 を返す（エルメの 10 秒を超えて再送の山にしないため）。
+ */
+async function respondAfter(env: Env, ctx: ExecutionContext, deliveryId: string | null, work: Promise<boolean>, body: Record<string, unknown>): Promise<Response> {
+  const settled = work.catch(() => false).then(async (ok) => {
+    if (ok) await markSeen(env, deliveryId);
+    return ok;
+  });
+  const budget = Number(env.RESPONSE_BUDGET_MS ?? DEFAULT_RESPONSE_BUDGET_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), Number.isFinite(budget) && budget > 0 ? budget : DEFAULT_RESPONSE_BUDGET_MS)));
+  const result = await Promise.race([settled, late]);
+  clearTimeout(timer);
+  if (result === "late") {
+    ctx.waitUntil(settled);
+    return json(200, { ...body, pending: true });
+  }
+  return result ? json(200, body) : json(502, { ok: false, error: "L Harness へ渡せませんでした" });
 }
 
 export default {
@@ -245,13 +285,11 @@ export default {
       }
       const events = Array.isArray(payload.events) ? payload.events : [];
       if (events.length > 1000) return json(413, { ok: false });
-      ctx.waitUntil(applyLmeEvents(env, events));
-      return json(200, { ok: true, accepted: events.length });
+      return respondAfter(env, ctx, deliveryId, applyLmeEvents(env, events).then((failed) => failed === 0), { ok: true, accepted: events.length });
     }
 
     const raw = await request.arrayBuffer();
     if (raw.byteLength > 2_000_000) return json(413, { ok: false });
-    ctx.waitUntil(forwardLineEvents(env, raw));
-    return json(200, { ok: true });
+    return respondAfter(env, ctx, deliveryId, forwardLineEvents(env, raw), { ok: true });
   },
 };

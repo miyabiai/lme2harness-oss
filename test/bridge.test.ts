@@ -165,3 +165,62 @@ describe("bridge worker", () => {
     expect((await send(makeEnv({ LME_WEBHOOK_SECRET_PREVIOUS: "whsec_old" }).env)).status).toBe(401);
   });
 });
+
+/** 渡したキーを覚えるだけの KV */
+function memoryKv(): KVNamespace {
+  const store = new Map<string, string>();
+  return { get: async (k: string) => store.get(k) ?? null, put: async (k: string, v: string) => void store.set(k, v) } as unknown as KVNamespace;
+}
+
+describe("bridge worker: L Harness へ渡せなかったとき", () => {
+  it("LINE 転送: L Harness が失敗を返したら 502 を返し、同じ配信の再送は受け直す", async () => {
+    const { env } = makeEnv({ DEDUP: memoryKv() });
+    let status = 500;
+    let calls = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response("x", { status });
+    }) as typeof fetch;
+    try {
+      const send = () => {
+        const c = ctx();
+        const req = new Request(`https://bridge.example/lme/line/${env.PATH_TOKEN_LINE}`, { method: "POST", body: JSON.stringify({ events: [{ type: "unfollow" }] }), headers: { "X-Lme-Delivery-Id": "d-retry", "X-Lme-Timestamp": ts() } });
+        return worker.fetch(req, env, c).then(async (res) => (await flush(c), res));
+      };
+      expect((await send()).status).toBe(502);
+      status = 200;
+      expect((await send()).status).toBe(200);
+      expect(calls).toBe(2);
+      // 渡せた後の再送は重複として捨てる
+      expect(await (await send()).json()).toMatchObject({ duplicate: true });
+      expect(calls).toBe(2);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("L Message 転送: タグ付けが失敗したら 502 を返す", async () => {
+    const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32) });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.startsWith("https://api.lmes.jp/v1/tags")) return Response.json({ data: { tags: [{ id: 101, name: "会員" }] }, pagination: { has_next: false } });
+      if (u.endsWith("/api/tags") && (init?.method ?? "GET") === "GET") return Response.json({ data: [{ id: "tag-1", name: "会員" }] });
+      return new Response("down", { status: 503 });
+    }) as typeof fetch;
+    try {
+      const c = ctx();
+      const req = new Request(`https://bridge.example/lme/lmessage/${env.PATH_TOKEN_LMESSAGE}`, {
+        method: "POST",
+        headers: { "X-Lme-Signature": "whsec_a", "Content-Type": "application/json", "X-Lme-Timestamp": ts() },
+        body: JSON.stringify({ events: [{ lmessage_friend_id: 1001, line_friend_id: "U00000000000000000000000000001001", type: "tag", action: "add", tag_id: 101 }] }),
+      });
+      const res = await worker.fetch(req, env, c);
+      await flush(c);
+      expect(res.status).toBe(502);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});

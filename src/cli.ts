@@ -113,6 +113,7 @@ program
   .command("bridge")
   .description("並行運用ブリッジ（Cloudflare Worker）の設定値を生成し、エルメ側に貼る URL を表示する")
   .option("--deploy", "wrangler deploy まで実行する")
+  .option("--rotate-token", "受信パスのトークンを作り直す（URL が漏れたとき。--deploy と一緒に使う。同じ Worker のまま前の URL は使えなくなる）")
   .action((o) => runBridge(o).catch(onError));
 
 function onError(e: unknown): never {

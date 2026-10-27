@@ -13,7 +13,7 @@ import type {
   SourceTrafficSource,
   SourceWelcomeMessage,
 } from "../source/types.js";
-import type { SqlValue } from "../sql/render.js";
+import { quote, type Row, type SqlValue } from "../sql/render.js";
 import { harnessId } from "../harness/ids.js";
 import { sourceToHarnessJst } from "../harness/time.js";
 import { convertSourceText } from "./text.js";
@@ -217,6 +217,25 @@ export function mapTemplates(store: SnapshotStore, ctx: PlanContext): void {
 // ---------- ステップ配信 ----------
 type DeliveryMode = ScenarioStepsInfo["deliveryMode"];
 
+/** 流す時点で、そのシナリオが L Harness で有効になっているか（SQL の式） */
+export function scenarioActiveSql(scenarioId: string): string {
+  return `EXISTS (SELECT 1 FROM scenarios WHERE id = ${quote(scenarioId)} AND is_active = 1)`;
+}
+
+/**
+ * L Harness で有効にした（動いている）シナリオは、移行し直しても設定を書き換えない。
+ * 「最初から有効にする」設定（activate_automations）のときは、これまでどおり書き換える。
+ */
+function keepActiveScenario(ctx: PlanContext): Partial<Row> {
+  return ctx.options.activate_automations ? {} : { updateWhere: "scenarios.is_active = 0" };
+}
+
+/** 有効にしたシナリオには、ステップを足すことも書き換えることもしない（動いている配信を変えないため） */
+function keepActiveScenarioSteps(ctx: PlanContext, scenarioId: string): Partial<Row> {
+  if (ctx.options.activate_automations) return {};
+  return { insertWhere: `NOT ${scenarioActiveSql(scenarioId)}`, updateWhere: "(SELECT is_active FROM scenarios WHERE scenarios.id = scenario_steps.scenario_id) = 0" };
+}
+
 /** scenarios の 1 行（ステップ配信・あいさつで列の並びを揃える） */
 function scenarioValues(
   ctx: PlanContext,
@@ -285,6 +304,7 @@ export function mapScenarios(store: SnapshotStore, ctx: PlanContext): void {
     r.migrated += 1;
   }
   r.notes.push("配信トリガーはすべて「手動」で、停止状態で入れています（並行運用中の二重送信を防ぐため）。切替後に管理画面で有効化してください");
+  if (!ctx.options.activate_automations) r.notes.push("L Harness で有効にしたシナリオは、移行し直しても設定・ステップを変えず、新しく入る人は「一時停止」で入れます（エルメ側で変えた分は、L Harness で止めてから移行し直すか、管理画面で直してください）");
 }
 
 /** シナリオ 1 つ → scenarios 1 行 + scenario_steps。移したステップの並びを ctx.scenarioSteps に残す。 */
@@ -304,6 +324,7 @@ function mapScenario(s: SourceScenarioListItem, detail: SourceScenarioDetail | u
       created_at: sourceToHarnessJst(s.created_at, ctx.now),
     }),
     update: ["name", "description", "delivery_mode", "updated_at"],
+    ...keepActiveScenario(ctx),
   });
   const migratedSteps: MigratedStep[] = [];
   ctx.scenarioSteps.set(s.id, { name: s.name, deliveryMode, steps: migratedSteps });
@@ -356,6 +377,7 @@ function mapScenarioStep(
         on_reach_tag_id: i === parts.length - 1 ? onReachTag : null,
       }),
       conflict: ["id"],
+      ...keepActiveScenarioSteps(ctx, scenarioId),
     });
   });
   if (st.filters && st.filters.length) ctx.note("scenarios", "ステップ配信", "ステップの配信条件（フィルタ）は移していません。必要なら条件分岐で設定し直してください");
@@ -396,6 +418,7 @@ export function mapWelcome(store: SnapshotStore, ctx: PlanContext): void {
         delivery_mode: "relative",
         created_at: ctx.now,
       }),
+      ...keepActiveScenario(ctx),
     });
     ctx.add({
       table: "scenario_steps",
@@ -409,6 +432,7 @@ export function mapWelcome(store: SnapshotStore, ctx: PlanContext): void {
         timing: { offset_days: null, offset_minutes: null, delivery_time: null },
         on_reach_tag_id: tagIdsFromActions(w.actions).map((id) => ctx.tagIds.get(id)).find(Boolean) ?? null,
       }),
+      ...keepActiveScenarioSteps(ctx, scenarioId),
     });
     r.migrated += 1;
   }

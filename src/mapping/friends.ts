@@ -5,6 +5,8 @@ import { harnessId } from "../harness/ids.js";
 import { sourceToHarnessJst, parseSourceDate, toHarnessJst } from "../harness/time.js";
 import { isEventRecord, messageToLogParts, outgoingSource } from "./messages.js";
 import { nextDeliveryAt, restoreProgress } from "./scenario-progress.js";
+import { scenarioActiveSql } from "./masters.js";
+import { quote } from "../sql/render.js";
 
 const LINE_UID_RE = /^U[0-9a-f]{32}$/;
 
@@ -36,6 +38,8 @@ export interface FriendMapStats {
   scenarioRestored: number;
   /** 配信中で位置が分からなかった人 */
   scenarioUnknown: number;
+  /** 停止中の人（一時停止で入れる） */
+  scenarioStopped: number;
   invalidUid: number;
   /** 会話ではない記録（ステップ配信の開始・停止など）。入れない */
   events: number;
@@ -46,7 +50,7 @@ export interface FriendMapStats {
 type EntityReport = ReturnType<PlanContext["report"]>;
 
 export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapStats {
-  const stats: FriendMapStats = { friends: 0, blocked: 0, tags: 0, messages: 0, chats: 0, scenarios: 0, scenarioRestored: 0, scenarioUnknown: 0, invalidUid: 0, events: 0, empty: 0 };
+  const stats: FriendMapStats = { friends: 0, blocked: 0, tags: 0, messages: 0, chats: 0, scenarios: 0, scenarioRestored: 0, scenarioUnknown: 0, scenarioStopped: 0, invalidUid: 0, events: 0, empty: 0 };
   // 会話一覧（確認状態・対応ステータス・最終日時）。friends/<id>.json に無い分をここから補う
   const index = store.readJson<Record<string, SourceConversationIndexEntry>>("conversation_index.json") ?? {};
   const fr = ctx.report("friends", "友だち");
@@ -99,12 +103,14 @@ export function mapFriends(store: SnapshotStore, ctx: PlanContext): FriendMapSta
   fr.notes.push("アイコン画像と表示名の最新値は `lme2harness enrich` で LINE から取り直せます（ブロック中の人は取れません）");
   if (stats.blocked) fr.notes.push(`ブロック中 ${stats.blocked}人は「ブロック」状態で入れています`);
   if (sr.source) {
-    sr.notes.push("完了の人は「完了」、配信中の人は会話履歴の送信記録から「何通目まで届いたか」を復元し、続きの予定時刻を入れています（シナリオは停止状態なので、L Harness で有効にするまで送られません）。停止中の人は入れていません");
+    sr.notes.push("完了の人は「完了」、配信中の人は会話履歴の送信記録から「何通目まで届いたか」を復元し、続きの予定時刻を入れています（シナリオは停止状態なので、L Harness で有効にするまで送られません）。停止中の人は「一時停止」で入れ、送りません");
     if (stats.scenarioRestored) sr.notes.push(`配信中の ${stats.scenarioRestored}人は続きから送れる状態で入れました。有効にした時点で予定時刻を過ぎている分はすぐ送られるので、切り替えの直前にもう一度 extract → plan → apply してから有効にしてください`);
     if (stats.scenarioUnknown) {
       sr.level = "partial";
       sr.notes.push(`配信中の ${stats.scenarioUnknown}人は、エルメの会話履歴が開始時点まで残っておらず位置が分からないため「一時停止」で入れました。L Harness の画面からは再開できないので、続きが必要な人は手動で送るか、シナリオに入れ直してください`);
     }
+    if (stats.scenarioStopped) sr.notes.push(`エルメで配信を止めた ${stats.scenarioStopped}人は「一時停止」で入れました（前回の移行で配信中として入れた人も止まります）`);
+    if (stats.scenarioRestored && !ctx.options.activate_automations) sr.notes.push("L Harness で既に有効にしているシナリオに新しく入る人は、流す時点で「一時停止」にします（自動では送りません）");
   }
   mr.notes.push("エルメ側の画像・ファイルはエルメの URL を参照しています（エルメ解約後は開けなくなります）");
   if (stats.events) mr.notes.push(`ステップ配信の開始・停止などの記録 ${stats.events}件は会話ではないので入れていません`);
@@ -186,9 +192,21 @@ function addFriendRow(f: FriendInfo, uid: string, blocked: boolean, ctx: PlanCon
       updated_at: ctx.now,
     },
     conflict: ["line_user_id"],
-    // 既に L Harness にいる友だち（並行運用で先に登録済み）は、表示名・アイコンを壊さずメタデータと所属だけ補う
+    // 既に L Harness にいる友だち（並行運用で先に登録済み・前回移した人）は、表示名・アイコンを壊さずメタデータと所属だけ補う。
+    // メタデータは L Harness 側で足された項目（フォームの回答など）を残してエルメの項目を足し、
+    // エルメ側の元データ（_lme）だけは今回の取得結果に置き換える。追加日は古い方にする
     update: ["metadata", "line_account_id", "updated_at", "first_followed_at", "created_at"],
+    merge: {
+      metadata: "json_set(json_patch(CASE WHEN json_valid(friends.metadata) THEN friends.metadata ELSE '{}' END, excluded.metadata), '$._lme', json(json_extract(excluded.metadata, '$._lme')))",
+      first_followed_at: olderDate("friends.first_followed_at", "excluded.first_followed_at"),
+      created_at: olderDate("friends.created_at", "excluded.created_at"),
+    },
   });
+}
+
+/** 2つの日時（L Harness JST の文字列）の古い方。既存が空なら入れる値 */
+function olderDate(existing: string, incoming: string): string {
+  return `CASE WHEN ${existing} IS NULL OR substr(${incoming},1,23) < substr(${existing},1,23) THEN ${incoming} ELSE ${existing} END`;
 }
 
 /** タグ（＋対応ステータスのタグ）→ friend_tags */
@@ -288,12 +306,19 @@ function addChat(f: FriendInfo, lastAt: string | null, ctx: PlanContext, stats: 
       updated_at: ctx.now,
     },
     conflict: ["friend_id"],
-    update: ["status", "notes", "last_message_at", "updated_at"],
+    // 既にあるチャットは、対応状態（未読・対応済み）を L Harness 側のまま残し、メモは人が書いたものを残し、最終日時を古くしない。
+    // エルメの確認状態を入れるのは新しく作るときだけ
+    update: ["notes", "last_message_at", "updated_at"],
+    merge: {
+      // メモは、このツールが書いた「対応ステータス: …」だけ書き換え、L Harness で人が書いたメモは残す
+      notes: "CASE WHEN chats.notes IS NULL OR chats.notes LIKE '対応ステータス: %' THEN excluded.notes ELSE chats.notes END",
+      last_message_at: "CASE WHEN chats.last_message_at IS NULL OR substr(excluded.last_message_at,1,23) > substr(chats.last_message_at,1,23) THEN excluded.last_message_at ELSE chats.last_message_at END",
+    },
   });
   stats.chats += 1;
 }
 
-/** ステップ配信の進行状態 → friend_scenarios（停止中の人は入れない） */
+/** ステップ配信の進行状態 → friend_scenarios（停止中の人は一時停止で入れる） */
 function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapStats, sr: EntityReport): void {
   const s = f.snap;
   for (const sc of s.detail?.scenarios ?? []) {
@@ -305,14 +330,17 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
       ctx.note("friend_scenarios", "ステップ配信の進行状態", "ステップ配信の中身が無い（MCP 未使用か削除済み）ものは進行状態を作っていません");
       continue;
     }
-    if (sc.status !== "completed" && sc.status !== "following") {
-      sr.skipped += 1; // 停止中の人は入れない（L Harness に入れると配信対象になりうるため）
-      continue;
-    }
     const startedMs = parseSourceDate(sc.started_at);
-    const progress = sc.status === "following" ? followingProgress(sourceScenarioId, startedMs, f, ctx) : { status: "completed" as const, currentOrder: 9999, nextAt: null };
+    // 停止中の人は「一時停止」で入れる（前回の移行で配信中として入れた人も、ここで止まる）
+    const progress: FriendScenarioProgress = sc.status === "following" ? followingProgress(sourceScenarioId, startedMs, f, ctx)
+      : sc.status === "completed" ? { status: "completed", currentOrder: 9999, nextAt: null }
+      : { status: "paused", currentOrder: -1, nextAt: null };
+    if (sc.status !== "completed" && sc.status !== "following") stats.scenarioStopped += 1;
     if (progress.status === "active") stats.scenarioRestored += 1;
-    if (progress.status === "paused") stats.scenarioUnknown += 1;
+    if (progress.status === "paused" && sc.status === "following") stats.scenarioUnknown += 1;
+    // L Harness で有効にしたシナリオに新しく入る人は、流す時点で「一時停止」にする（自動では送らない）
+    const holdIfActive = progress.status === "active" && !ctx.options.activate_automations;
+    const active = scenarioActiveSql(scenarioId);
     ctx.add({
       table: "friend_scenarios",
       values: {
@@ -325,6 +353,9 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
         next_delivery_at: progress.nextAt,
         updated_at: ctx.now,
       },
+      ...(holdIfActive
+        ? { valueSql: { status: `CASE WHEN ${active} THEN 'paused' ELSE 'active' END`, next_delivery_at: `CASE WHEN ${active} THEN NULL ELSE ${quote(progress.nextAt)} END` } }
+        : {}),
       update: ["status", "current_step_order", "next_delivery_at", "updated_at"],
       // L Harness でシナリオを動かし始めた後は、L Harness 側の進行を上書きしない
       updateWhere: "(SELECT is_active FROM scenarios WHERE scenarios.id = friend_scenarios.scenario_id) = 0",

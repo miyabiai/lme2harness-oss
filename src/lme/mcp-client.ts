@@ -81,9 +81,11 @@ export function toolResultData(rpc: Record<string, unknown>): unknown {
 }
 
 function openBrowser(url: string): void {
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  // Windows の start はコマンドプロンプトの命令で、シェル経由だと URL の & で切れて残りが別のコマンドになるので使わない
+  const [cmd, args] = process.platform === "darwin" ? ["open", [url]] : process.platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", url]] : ["xdg-open", [url]];
   try {
-    const child = spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" });
+    const child = spawn(cmd, args as string[], { stdio: "ignore", detached: true });
+    child.on("error", () => undefined);
     child.unref();
   } catch {
     /* 開けなければ URL を表示するだけ */

@@ -31,13 +31,24 @@ export interface HarnessTag {
   color?: string;
 }
 
+/** API キーを送ってよい URL か（https、または手元で動かす L Harness の http://localhost・127.0.0.1） */
+export function isSafeHarnessUrl(value: string): boolean {
+  if (!isHttpUrl(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export class HarnessApi {
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
-    if (!isHttpUrl(baseUrl)) throw new Error("harness_url は https://… で指定してください");
+    if (!isSafeHarnessUrl(baseUrl)) throw new Error("harness_url は https://… で指定してください（API キーを送るため）");
     this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
 

@@ -1,12 +1,29 @@
 import { join } from "node:path";
 import type { PlanManifest } from "../mapping/plan.js";
-import { d1Query } from "../d1/wrangler.js";
+import { d1Query, type WranglerD1Options } from "../d1/wrangler.js";
 import { d1Options, loadEnv, outDir, snapshotDir } from "./shared.js";
 import { SnapshotStore } from "../snapshot/store.js";
 import { harnessId } from "../harness/ids.js";
 import { quote } from "../sql/render.js";
 import { readJsonFile } from "../util.js";
 import * as log from "../log.js";
+
+/**
+ * ステップの件数の確認。L Harness で有効にしたシナリオは、移行し直してもステップを変えないので数えない
+ * （古い版の計画には steps_by_scenario が無いので、これまでどおり全部を数える）。
+ */
+export async function stepsCheck(manifest: PlanManifest, d1: WranglerD1Options): Promise<{ label: string; sql: string; expected: number }> {
+  const base = `SELECT COUNT(*) AS c FROM scenario_steps s JOIN scenarios c ON c.id = s.scenario_id WHERE c.description LIKE 'L Message%'`;
+  const total = manifest.counts.scenario_steps ?? 0;
+  const planned = manifest.steps_by_scenario;
+  if (!planned || !total) return { label: "ステップ", sql: base, expected: total };
+  const active = await d1Query(`SELECT id FROM scenarios WHERE is_active = 1 AND description LIKE 'L Message%'`, d1);
+  const kept = active.map((r) => String(r.id)).filter((id) => id in planned);
+  if (!kept.length) return { label: "ステップ", sql: base, expected: total };
+  log.info(`  L Harness で有効にしているシナリオ ${kept.length}件は、ステップを変えていないので数えません`);
+  const keptSteps = kept.reduce((n, id) => n + planned[id], 0);
+  return { label: "ステップ（有効にしたシナリオを除く）", sql: `${base} AND c.is_active = 0`, expected: total - keptSteps };
+}
 
 export async function runVerify(opts: { local?: boolean }): Promise<void> {
   const env = loadEnv();
@@ -21,7 +38,7 @@ export async function runVerify(opts: { local?: boolean }): Promise<void> {
     { label: "会話履歴", sql: `SELECT COUNT(*) AS c FROM messages_log m JOIN friends f ON f.id = m.friend_id WHERE f.line_account_id = ${acc} AND json_extract(f.metadata, '$._lme.friend_id') IS NOT NULL`, expected: manifest.counts.messages_log ?? 0 },
     { label: "会話（chats）", sql: `SELECT COUNT(*) AS c FROM chats c JOIN friends f ON f.id = c.friend_id WHERE json_extract(f.metadata, '$._lme.friend_id') IS NOT NULL`, expected: manifest.counts.chats ?? 0 },
     { label: "ステップ配信", sql: `SELECT COUNT(*) AS c FROM scenarios WHERE line_account_id = ${acc} AND description LIKE 'L Message%'`, expected: manifest.counts.scenarios ?? 0 },
-    { label: "ステップ", sql: `SELECT COUNT(*) AS c FROM scenario_steps s JOIN scenarios c ON c.id = s.scenario_id WHERE c.description LIKE 'L Message%'`, expected: manifest.counts.scenario_steps ?? 0 },
+    await stepsCheck(manifest, d1),
     { label: "テンプレート", sql: `SELECT COUNT(*) AS c FROM templates`, expected: manifest.counts.templates ?? 0 },
     { label: "フォーム", sql: `SELECT COUNT(*) AS c FROM forms`, expected: manifest.counts.forms ?? 0 },
     { label: "フォーム回答", sql: `SELECT COUNT(*) AS c FROM form_submissions`, expected: manifest.counts.form_submissions ?? 0 },

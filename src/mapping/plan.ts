@@ -41,6 +41,8 @@ export interface PlanManifest {
   line_account_id: string;
   chunks: Array<{ file: string; table: string; statements: number; bytes: number }>;
   counts: Record<string, number>;
+  /** シナリオごとのステップ数（L Harness で有効にしたシナリオのステップを変えないとき。verify がそのシナリオを数えないために使う） */
+  steps_by_scenario?: Record<string, number>;
   reports: Record<string, EntityReport>;
   warnings: string[];
 }
@@ -65,6 +67,7 @@ export function buildPlan(store: SnapshotStore, opts: BuildPlanOptions): { ctx: 
   mapBookings(store, ctx);
   mapLessons(store, ctx);
   noteUnmigrated(store, ctx);
+  keepActiveState(ctx.rows);
 
   const rowsByTable = new Map<string, Row[]>();
   for (const row of ctx.rows) {
@@ -73,6 +76,18 @@ export function buildPlan(store: SnapshotStore, opts: BuildPlanOptions): { ctx: 
     rowsByTable.set(row.table, list);
   }
   return { ctx, rowsByTable };
+}
+
+/**
+ * 停止・有効の状態は、移行し直しても変えない（L Harness で有効にしたシナリオ・自動応答・フォームを止めず、
+ * 無効にした流入経路・メニューを戻さない）。最初に入れるときだけ、変換が決めた状態で入れる。
+ */
+function keepActiveState(rows: Row[]): void {
+  for (const row of rows) {
+    if (!("is_active" in row.values)) continue;
+    const keys = row.conflict ?? ["id"];
+    row.update = (row.update ?? Object.keys(row.values).filter((c) => !keys.includes(c))).filter((c) => c !== "is_active");
+  }
 }
 
 function noteUnmigrated(store: SnapshotStore, ctx: PlanContext): void {
@@ -134,11 +149,22 @@ export function writePlan(outDir: string, ctx: PlanContext, rowsByTable: Map<str
   const lessons = store.readJson<unknown>("lesson_calendars.json");
   if (salons || lessons) writePrivateFile(join(outDir, "bookings.json"), JSON.stringify({ salons, lessons }, null, 2));
 
+  const stepsByScenario: Record<string, number> = {};
+  if (!ctx.options.activate_automations) {
+    const stepIds = new Map<string, Set<string>>();
+    for (const r of rowsByTable.get("scenario_steps") ?? []) {
+      const set = stepIds.get(String(r.values.scenario_id)) ?? new Set<string>();
+      set.add(String(r.values.id));
+      stepIds.set(String(r.values.scenario_id), set);
+    }
+    for (const [id, set] of stepIds) stepsByScenario[id] = set.size;
+  }
   const manifest: PlanManifest = {
     generated_at: ctx.now,
     line_account_id: ctx.lineAccountId,
     chunks,
     counts,
+    ...(ctx.options.activate_automations ? {} : { steps_by_scenario: stepsByScenario }),
     reports: Object.fromEntries(ctx.reports),
     warnings: ctx.warnings,
   };

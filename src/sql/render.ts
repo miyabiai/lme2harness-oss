@@ -16,6 +16,12 @@ export interface Row {
   update?: string[];
   /** 衝突時に更新する条件（既存行を表名で参照できる）。満たさなければ何もしない */
   updateWhere?: string;
+  /** 衝突時の更新を excluded.列 でなく式にする列（例: 既存のメタデータに足す。既存行は表名、入れる値は excluded で参照する） */
+  merge?: Record<string, string>;
+  /** 入れる値を SQL の式にする列（例: 流す時点の移行先の状態で値を変える） */
+  valueSql?: Record<string, string>;
+  /** 新しく入れる条件。満たさなければ入れない（既にある行の更新は updateWhere で決める） */
+  insertWhere?: string;
 }
 
 export function quote(v: SqlValue): string {
@@ -31,12 +37,14 @@ export function renderInsert(row: Row): string {
   const cols = Object.keys(row.values);
   const conflict = row.conflict ?? ["id"];
   const updateCols = row.update ?? cols.filter((c) => !conflict.includes(c));
-  const vals = cols.map((c) => quote(row.values[c])).join(", ");
+  const vals = cols.map((c) => row.valueSql?.[c] ?? quote(row.values[c])).join(", ");
   const onConflict =
     updateCols.length === 0
       ? `ON CONFLICT(${conflict.join(", ")}) DO NOTHING`
-      : `ON CONFLICT(${conflict.join(", ")}) DO UPDATE SET ${updateCols.map((c) => `${c} = excluded.${c}`).join(", ")}${row.updateWhere ? ` WHERE ${row.updateWhere}` : ""}`;
-  return `INSERT INTO ${row.table} (${cols.join(", ")}) VALUES (${vals}) ${onConflict};`;
+      : `ON CONFLICT(${conflict.join(", ")}) DO UPDATE SET ${updateCols.map((c) => `${c} = ${row.merge?.[c] ?? `excluded.${c}`}`).join(", ")}${row.updateWhere ? ` WHERE ${row.updateWhere}` : ""}`;
+  // INSERT … SELECT に ON CONFLICT を付けるときは、構文の取り違えを避けるため SELECT に WHERE が要る（SQLite の決まり）
+  const source = row.insertWhere ? `SELECT ${vals} WHERE ${row.insertWhere}` : `VALUES (${vals})`;
+  return `INSERT INTO ${row.table} (${cols.join(", ")}) ${source} ${onConflict};`;
 }
 
 export interface SqlChunk {

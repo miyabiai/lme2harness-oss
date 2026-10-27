@@ -1,21 +1,61 @@
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { cloudflareEnv, loadEnv, requireHarness } from "./shared.js";
-import { localWranglerCommand } from "../d1/wrangler.js";
+import type { Lme2HarnessConfig } from "../config.js";
+import { localWranglerCommand, wranglerEnv } from "../d1/wrangler.js";
 import { readJsonFile } from "../util.js";
 import * as log from "../log.js";
 
 /** 再生成前の旧シークレットを受け付ける時間（エルメの推奨は約2分） */
 const PREVIOUS_SECRET_GRACE_MS = 2 * 60 * 1000;
 
-interface BridgeState {
+export interface BridgeState {
   path_token_line: string;
   path_token_lmessage: string;
   worker_name: string;
+  /** どの移行先向けのブリッジか（別の移行先のつなぎ先で配備し直して、先の転送を壊さないため）。古い版で作った状態には無い */
+  target?: string;
   created_at: string;
+}
+
+/** ブリッジの Worker 名。同じ Cloudflare アカウントにほかのフォルダから配備したブリッジと重ならないよう、フォルダごとに末尾を変える */
+function bridgeWorkerName(): string {
+  return `lme2harness-bridge-${randomBytes(4).toString("hex")}`;
+}
+
+function bridgeTarget(config: Lme2HarnessConfig): string {
+  return `${config.d1_database_id ?? config.d1_database_name ?? "-"}:${(config.harness_url ?? "-").replace(/\/+$/, "")}`;
+}
+
+/**
+ * このフォルダのブリッジの状態（受信パスのトークン・Worker 名）を読み、無ければ作る。
+ * 前に作った状態は Worker 名・トークンを変えない（エルメに貼った URL がそのまま使えるように）。
+ */
+export function prepareBridgeState(statePath: string, config: Lme2HarnessConfig, opts: { deploy?: boolean; rotateToken?: boolean } = {}): BridgeState {
+  let state = readJsonFile<BridgeState>(statePath);
+  const target = bridgeTarget(config);
+  if (state?.target && state.target !== target) {
+    throw new Error("このフォルダのブリッジは、別の移行先（L Harness・D1）向けに作ったものです。配備し直すと先の転送が止まるので止めました。別の移行先には別のフォルダで用意してください");
+  }
+  if (state && opts.rotateToken) {
+    if (!opts.deploy) throw new Error("--rotate-token は --deploy と一緒に使ってください（配備した Worker のトークンを入れ替えないと、前の URL が使えたままになります）");
+    state = { ...state, path_token_line: token(), path_token_lmessage: token() };
+  }
+  if (!state) state = { path_token_line: token(), path_token_lmessage: token(), worker_name: config.bridge_worker_name ?? bridgeWorkerName(), created_at: new Date().toISOString() };
+  state.target ??= target;
+  mkdirSync(dirname(statePath), { recursive: true, mode: 0o700 });
+  writeFileSync(statePath, JSON.stringify(state, null, 2), { mode: 0o600 });
+  return state;
+}
+
+/** 前に配備した wrangler.toml の重複排除（KV）の設定を引き継ぐ */
+export function keptKvBlock(previous: string | null): string {
+  if (!previous) return "";
+  const match = previous.match(/\[\[kv_namespaces\]\][\s\S]*?(?=\n\s*\[|$)/);
+  return match ? `\n${match[0].trim()}\n` : "";
 }
 
 function token(): string {
@@ -30,7 +70,8 @@ function packagedBridgeDir(): string {
 
 async function run(cmd: string, args: string[], cwd: string, input?: string, env?: Record<string, string>): Promise<void> {
   await new Promise<void>((resolveP, reject) => {
-    const child = spawn(cmd, args, { cwd, stdio: [input === undefined ? "ignore" : "pipe", "inherit", "inherit"], env: { ...process.env, ...(env ?? {}) }, shell: process.platform === "win32" });
+    // シェルは通さない（Windows でも localWranglerCommand が node で直接動かす）
+    const child = spawn(cmd, args, { cwd, stdio: [input === undefined ? "ignore" : "pipe", "inherit", "inherit"], env: wranglerEnv(env) });
     if (input !== undefined) {
       child.stdin!.write(input);
       child.stdin!.end();
@@ -44,11 +85,11 @@ async function run(cmd: string, args: string[], cwd: string, input?: string, env
  * 並行運用ブリッジ:
  * 1. ./bridge に Worker 一式をコピー（初回）
  * 2. wrangler.toml を生成（HARNESS_URL・D1 database_id）
- * 3. 受信パスのトークンを作って .lme2harness/bridge.json に保存
+ * 3. 受信パスのトークンを作って .lme2harness/bridge.json に保存（--rotate-token で作り直す）
  * 4. --deploy なら wrangler deploy ＋ secret 登録
  * 5. エルメ「Webhook転送」画面に貼る URL を表示
  */
-export async function runBridge(opts: { deploy?: boolean }): Promise<void> {
+export async function runBridge(opts: { deploy?: boolean; rotateToken?: boolean }): Promise<void> {
   const env = loadEnv();
   const cwd = process.cwd();
   const bridgeDir = join(cwd, "bridge");
@@ -59,16 +100,11 @@ export async function runBridge(opts: { deploy?: boolean }): Promise<void> {
     cpSync(src, bridgeDir, { recursive: true, filter: (p) => !p.includes("node_modules") && !p.includes(".wrangler") && !p.endsWith("wrangler.toml") });
     log.info("./bridge に Worker の雛形をコピーしました");
   }
-  const statePath = join(cwd, ".lme2harness", "bridge.json");
-  let state = readJsonFile<BridgeState>(statePath);
-  if (!state) {
-    state = { path_token_line: token(), path_token_lmessage: token(), worker_name: env.config.bridge_worker_name ?? "lme2harness-bridge", created_at: new Date().toISOString() };
-    mkdirSync(dirname(statePath), { recursive: true, mode: 0o700 });
-    writeFileSync(statePath, JSON.stringify(state, null, 2), { mode: 0o600 });
-  }
   if (!env.config.harness_url) throw new Error("harness_url（lme2harness.config.json）が未設定です");
   if (!env.config.d1_database_id) throw new Error("d1_database_id（lme2harness.config.json）が未設定です。L Harness の apps/worker/wrangler.toml の database_id を入れてください");
 
+  const state = prepareBridgeState(join(cwd, ".lme2harness", "bridge.json"), env.config, opts);
+  if (opts.rotateToken) log.info("受信パスのトークンを作り直しました。配備が終わると前の URL は使えなくなります");
   const harnessWorker = env.config.harness_worker_name ?? new URL(env.config.harness_url).hostname.split(".")[0];
   const toml = `# lme2harness bridge（自動生成。直したいときは lme2harness bridge を再実行）
 name = "${state.worker_name}"
@@ -92,7 +128,9 @@ STRIP_REPLY_TOKEN = "1"
 SYNC_FRIEND_INFO = "1"
 MAX_CLOCK_SKEW_SECONDS = "300"
 `;
-  writeFileSync(join(bridgeDir, "wrangler.toml"), toml);
+  const tomlPath = join(bridgeDir, "wrangler.toml");
+  const previous = existsSync(tomlPath) ? readFileSync(tomlPath, "utf8") : null;
+  writeFileSync(tomlPath, toml + keptKvBlock(previous));
 
   if (opts.deploy) {
     requireHarness(env);
