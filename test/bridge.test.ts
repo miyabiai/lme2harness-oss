@@ -265,6 +265,20 @@ describe("bridge worker: エルメのタグ名を引けなかったとき", () =
     }
   });
 
+  it("API キーの誤りなど送り直しても同じ失敗は、再送させずに受け取る（502 を繰り返さない）", async () => {
+    const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32) });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      if (String(url).startsWith("https://api.lmes.jp/v1/tags")) return new Response("unauthorized", { status: 401 });
+      return Response.json({ success: true, data: {} });
+    }) as typeof fetch;
+    try {
+      expect((await send(env, 505, "d-auth")).status).toBe(200);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("同じ配信の中で見つからなかったタグは引き直さない（一覧の取得で返事の上限時間を使い切らない）", async () => {
     const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32) });
     let lists = 0;

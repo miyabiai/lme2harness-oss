@@ -67,8 +67,8 @@ export function prepareBridgeState(
   if (recorded && recorded !== target) {
     throw new Error("このフォルダのブリッジは、別の移行先（L Harness・D1）向けに作ったものです。配備し直すと先の転送が止まるので止めました。別の移行先には別のフォルダで用意してください");
   }
+  if (opts.rotateToken && !opts.deploy) throw new Error("--rotate-token は --deploy と一緒に使ってください（配備した Worker のトークンを入れ替えないと、前の URL が使えたままになります）");
   if (state && opts.rotateToken) {
-    if (!opts.deploy) throw new Error("--rotate-token は --deploy と一緒に使ってください（配備した Worker のトークンを入れ替えないと、前の URL が使えたままになります）");
     return { ...state, target, path_token_line: token(), path_token_lmessage: token() };
   }
   if (!state) state = { path_token_line: token(), path_token_lmessage: token(), worker_name: config.bridge_worker_name ?? bridgeWorkerName(), created_at: new Date().toISOString() };
@@ -142,7 +142,7 @@ async function run(cmd: string, args: string[], cwd: string, input?: string, env
 
 /**
  * 並行運用ブリッジ:
- * 1. ./bridge に Worker 一式をコピー（初回）
+ * 1. ./bridge に Worker 一式を入れる（前の版で入れたものは、このツールの版に合わせて新しくする）
  * 2. wrangler.toml を生成（HARNESS_URL・D1 database_id）
  * 3. 受信パスのトークンを作って .lme2harness/bridge.json に保存（--rotate-token で作り直す）
  * 4. --deploy なら wrangler deploy ＋ secret 登録

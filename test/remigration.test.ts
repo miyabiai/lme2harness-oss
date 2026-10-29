@@ -157,6 +157,10 @@ describe("移行し直しても L Harness で有効にした状態を変えな�
     expect(db.all(`SELECT is_active, response_content FROM auto_replies WHERE id = '${active.id}'`)[0]).toEqual({ is_active: 1, response_content: "L Harness で直した返信" });
     expect(db.all(`SELECT response_content FROM auto_replies WHERE id = '${inactive.id}'`)[0]).toEqual({ response_content: inactive.response_content });
     expect(db.all(`SELECT is_active, name FROM forms WHERE id = '${form.id}'`)[0]).toEqual({ is_active: 1, name: "L Harness で直したフォーム" });
+    // L Harness で受けた回答の件数は減らさない
+    db.exec(`UPDATE forms SET submit_count = 500 WHERE id = '${form.id}'`);
+    applyAll(db, plan().rowsByTable);
+    expect(db.all<{ submit_count: number }>(`SELECT submit_count FROM forms WHERE id = '${form.id}'`)[0].submit_count).toBe(500);
     db.close();
   });
 

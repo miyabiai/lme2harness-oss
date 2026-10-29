@@ -49,6 +49,7 @@ describe("ブリッジの状態", () => {
     const path = statePath();
     const first = prepareBridgeState(path, config);
     expect(() => prepareBridgeState(path, config, { rotateToken: true })).toThrow(/--deploy/);
+    expect(() => prepareBridgeState(statePath(), config, { rotateToken: true })).toThrow(/--deploy/);
     const rotated = prepareBridgeState(path, config, { rotateToken: true, deploy: true });
     expect(rotated.worker_name).toBe(first.worker_name);
     expect(rotated.path_token_line).not.toBe(first.path_token_line);

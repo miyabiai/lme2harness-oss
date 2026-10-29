@@ -145,6 +145,8 @@ export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
         table: "forms",
         values: { id: formId, name, fields: JSON.stringify(fields), submit_count: submitCount },
         update: ["submit_count"],
+        // L Harness で受けた回答の分を減らさない
+        merge: { submit_count: "MAX(forms.submit_count, excluded.submit_count)" },
       });
     }
   }

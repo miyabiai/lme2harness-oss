@@ -138,8 +138,13 @@ async function lmeTagName(env: Env, tagId: number): Promise<string | null> {
   // 公開 API のタグ一覧は最大 500 件/ページ。タグは多くないので毎回全件を引く（キャッシュ 10 分）
   for (let page = 1; page <= 20; page++) {
     const res = await fetch(`https://api.lmes.jp/v1/tags?page=${page}&limit=500`, { headers: { "X-LME-API-KEY": env.LME_API_KEY } });
-    // 取れなかったときは「タグが無い」と区別して投げる（エルメの再送で引き直す）
-    if (!res.ok) throw new Error(`エルメのタグ一覧が ${res.status} を返しました`);
+    // 一時的な失敗（混雑・エルメ側の障害）は「タグが無い」と区別して投げる（エルメの再送で引き直す）。
+    // API キーの誤りなど送り直しても同じ失敗は、引けなかったものとして扱う（再送を繰り返させない）
+    if (res.status === 429 || res.status >= 500) throw new Error(`エルメのタグ一覧が ${res.status} を返しました`);
+    if (!res.ok) {
+      console.warn(`エルメのタグ一覧が ${res.status} を返しました（LME_API_KEY を確かめてください）`);
+      return null;
+    }
     const json = (await res.json()) as { data?: { tags?: Array<{ id: number; name: string }> }; pagination?: { has_next?: boolean } };
     const hit = json.data?.tags?.find((t) => t.id === tagId);
     if (hit) return hit.name;
