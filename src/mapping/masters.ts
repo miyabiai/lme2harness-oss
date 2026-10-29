@@ -206,6 +206,7 @@ export function mapTemplates(store: SnapshotStore, ctx: PlanContext): void {
           created_at: sourceToHarnessJst(t.updated_at, ctx.now),
           updated_at: ctx.now,
         },
+        ...keepTemplateInUse(ctx),
       });
     });
     r.migrated += 1;
@@ -229,6 +230,16 @@ export function scenarioActiveSql(scenarioId: string): string {
  */
 export function keepActiveRow(ctx: PlanContext, table: string): Partial<Row> {
   return ctx.options.activate_automations ? {} : { updateWhere: `${table}.is_active = 0` };
+}
+
+/** L Harness で有効にした自動応答・シナリオが使っているテンプレートは、移行し直しても書き換えない（動いている返信の文が戻らないように） */
+function keepTemplateInUse(ctx: PlanContext): Partial<Row> {
+  if (ctx.options.activate_automations) return {};
+  return {
+    updateWhere:
+      "NOT EXISTS (SELECT 1 FROM auto_replies WHERE auto_replies.template_id = templates.id AND auto_replies.is_active = 1)" +
+      " AND NOT EXISTS (SELECT 1 FROM scenario_steps JOIN scenarios ON scenarios.id = scenario_steps.scenario_id WHERE scenario_steps.template_id = templates.id AND scenarios.is_active = 1)",
+  };
 }
 
 /** 有効にしたシナリオには、ステップを足すことも書き換えることもしない（動いている配信を変えないため） */

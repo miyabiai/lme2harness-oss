@@ -160,6 +160,32 @@ describe("移行し直しても L Harness で有効にした状態を変えな�
     db.close();
   });
 
+  it("有効にした自動応答が使っているテンプレートは書き換えず、使われていないテンプレートは最新にする", () => {
+    const db = makeDb();
+    applyAll(db, plan().rowsByTable);
+    const [used, unused] = db.all<{ id: string; message_content: string }>(`SELECT id, message_content FROM templates WHERE id IN (${migratedIds("templates")}) ORDER BY id LIMIT 2`);
+    expect(unused).toBeDefined();
+    const reply = db.all<{ id: string }>(`SELECT id FROM auto_replies WHERE id IN (${migratedIds("auto_replies")}) LIMIT 1`)[0];
+    db.exec(`UPDATE auto_replies SET is_active = 1, template_id = '${used.id}' WHERE id = '${reply.id}'`);
+    db.exec(`UPDATE templates SET message_content = 'L Harness で直したテンプレート' WHERE id = '${used.id}'`);
+    db.exec(`UPDATE templates SET message_content = '古いテンプレート' WHERE id = '${unused.id}'`);
+    applyAll(db, plan().rowsByTable);
+    expect(db.all<{ message_content: string }>(`SELECT message_content FROM templates WHERE id = '${used.id}'`)[0].message_content).toBe("L Harness で直したテンプレート");
+    expect(db.all<{ message_content: string }>(`SELECT message_content FROM templates WHERE id = '${unused.id}'`)[0].message_content).toBe(unused.message_content);
+    db.close();
+  });
+
+  it("L Harness が自分で同じ人を同じシナリオに入れていたら、そちらを残して止まらずに流れる", () => {
+    const db = makeDb();
+    applyAll(db, plan().rowsByTable);
+    db.exec(`DELETE FROM friend_scenarios WHERE friend_id = '${TARO}' AND scenario_id = '${FOLLOW_SCENARIO}'`);
+    db.exec(`UPDATE scenarios SET is_active = 1 WHERE id = '${FOLLOW_SCENARIO}'`);
+    db.exec(`INSERT INTO friend_scenarios (id, friend_id, scenario_id, current_step_order, status, started_at, updated_at) VALUES ('lh-own', '${TARO}', '${FOLLOW_SCENARIO}', 2, 'active', '2026-10-20T10:00:00.000+09:00', '2026-10-20T10:00:00.000+09:00')`);
+    expect(() => applyAll(db, plan().rowsByTable)).not.toThrow();
+    expect(db.all(`SELECT id, status, current_step_order FROM friend_scenarios WHERE friend_id = '${TARO}' AND scenario_id = '${FOLLOW_SCENARIO}'`)).toEqual([{ id: "lh-own", status: "active", current_step_order: 2 }]);
+    db.close();
+  });
+
   it("「最初から有効にする」設定では、有効な自動応答もエルメの内容で書き換える", () => {
     const db = makeDb();
     applyAll(db, plan({ activate_automations: true }).rowsByTable);

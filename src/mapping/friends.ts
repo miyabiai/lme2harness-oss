@@ -341,10 +341,11 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
     // L Harness で有効にしたシナリオに新しく入る人は、流す時点で「一時停止」にする（自動では送らない）
     const holdIfActive = progress.status === "active" && !ctx.options.activate_automations;
     const active = scenarioActiveSql(scenarioId);
+    const id = harnessId("friend_scenario", s.row.lmessage_friend_id, sourceScenarioId);
     ctx.add({
       table: "friend_scenarios",
       values: {
-        id: harnessId("friend_scenario", s.row.lmessage_friend_id, sourceScenarioId),
+        id,
         friend_id: f.id,
         scenario_id: scenarioId,
         current_step_order: progress.currentOrder,
@@ -356,6 +357,8 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
       ...(holdIfActive
         ? { valueSql: { status: `CASE WHEN ${active} THEN 'paused' ELSE 'active' END`, next_delivery_at: `CASE WHEN ${active} THEN NULL ELSE ${quote(progress.nextAt)} END` } }
         : {}),
+      // L Harness が自分で入れた同じ人・同じシナリオの所属があれば、そちらを残して入れない（同じ人の二重登録で止まらないように）
+      insertWhere: `NOT EXISTS (SELECT 1 FROM friend_scenarios WHERE friend_id = ${quote(f.id)} AND scenario_id = ${quote(scenarioId)} AND id <> ${quote(id)})`,
       update: ["status", "current_step_order", "next_delivery_at", "updated_at"],
       // L Harness でシナリオを動かし始めた後は、L Harness 側の進行を上書きしない
       updateWhere: "(SELECT is_active FROM scenarios WHERE scenarios.id = friend_scenarios.scenario_id) = 0",

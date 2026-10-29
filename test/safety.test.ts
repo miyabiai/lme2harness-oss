@@ -76,6 +76,8 @@ describe("ブリッジの状態", () => {
     const previous = `name = "x"\n\n[vars]\nHARNESS_URL = "https://h"\n\n[[kv_namespaces]]\nbinding = "DEDUP"\nid = "abc123"\n`;
     expect(keptKvBlock(previous)).toBe(`\n[[kv_namespaces]]\nbinding = "DEDUP"\nid = "abc123"\n`);
     expect(keptKvBlock(`name = "x"\n`)).toBe("");
+    // 字下げした設定も引き継ぐ
+    expect(keptKvBlock(`name = "x"\n  [[kv_namespaces]]\n  binding = "DEDUP"\n  id = "abc"\n`)).toBe(`\n[[kv_namespaces]]\n  binding = "DEDUP"\n  id = "abc"\n`);
     // コメントにした設定は引き継がない（有効にすると配備が失敗する）
     expect(keptKvBlock(`name = "x"\n# [[kv_namespaces]]\n# binding = "DEDUP"\n# id = "<id>"\n`)).toBe("");
     expect(keptKvBlock(`[[kv_namespaces]]\nbinding = "DEDUP"\nid = "abc"\n# 後ろのメモ\n[vars]\nX = "1"\n`)).toBe(`\n[[kv_namespaces]]\nbinding = "DEDUP"\nid = "abc"\n# 後ろのメモ\n`);

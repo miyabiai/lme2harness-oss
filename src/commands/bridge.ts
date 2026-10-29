@@ -74,7 +74,7 @@ export function prepareBridgeState(
 /** 前に配備した wrangler.toml の重複排除（KV）の設定を引き継ぐ（コメントにした設定は引き継がない） */
 export function keptKvBlock(previous: string | null): string {
   if (!previous) return "";
-  const blocks = [...previous.matchAll(/^\[\[kv_namespaces\]\][^\n]*(?:\n(?!\s*\[)[^\n]*)*/gm)].map((m) => m[0].trim());
+  const blocks = [...previous.matchAll(/^[ \t]*\[\[kv_namespaces\]\][^\n]*(?:\n(?!\s*\[)[^\n]*)*/gm)].map((m) => m[0].trim());
   return blocks.length ? `\n${blocks.join("\n\n")}\n` : "";
 }
 
