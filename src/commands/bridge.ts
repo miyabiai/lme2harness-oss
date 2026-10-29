@@ -148,6 +148,15 @@ export async function runBridge(opts: { deploy?: boolean; rotateToken?: boolean 
   const bridgeDir = join(cwd, "bridge");
   const src = packagedBridgeDir();
   if (!existsSync(join(src, "src", "index.ts"))) throw new Error(`ブリッジの雛形が見つかりません: ${src}`);
+  if (!env.config.harness_url) throw new Error("harness_url（lme2harness.config.json）が未設定です");
+  if (!env.config.d1_database_id) throw new Error("d1_database_id（lme2harness.config.json）が未設定です。L Harness の apps/worker/wrangler.toml の database_id を入れてください");
+
+  const tomlPath = join(bridgeDir, "wrangler.toml");
+  const previousToml = existsSync(tomlPath) ? readFileSync(tomlPath, "utf8") : null;
+  const statePath = join(cwd, ".lme2harness", "bridge.json");
+  const state = prepareBridgeState(statePath, env.config, { ...opts, previousToml });
+  if (opts.rotateToken) log.info("受信パスのトークンを作り直します。配備が終わると前の URL は使えなくなります");
+  // 設定・移行先を確かめてから ./bridge を書き換える
   const fresh = !existsSync(join(bridgeDir, "src", "index.ts"));
   const backupDir = join(cwd, ".lme2harness", "bridge-backup", new Date().toISOString().replace(/[:.]/g, "-"));
   const updated = syncBridgeTemplate(src, bridgeDir, backupDir);
@@ -156,14 +165,6 @@ export async function runBridge(opts: { deploy?: boolean; rotateToken?: boolean 
     log.info(`./bridge の Worker を、このツールの版に合わせて新しくしました（${updated.join("・")}）。前のものは ${relative(cwd, backupDir)} に控えています`);
     if (!opts.deploy) log.info("配備中の Worker を新しくするには `lme2harness bridge --deploy` を実行してください");
   }
-  if (!env.config.harness_url) throw new Error("harness_url（lme2harness.config.json）が未設定です");
-  if (!env.config.d1_database_id) throw new Error("d1_database_id（lme2harness.config.json）が未設定です。L Harness の apps/worker/wrangler.toml の database_id を入れてください");
-
-  const tomlPath = join(bridgeDir, "wrangler.toml");
-  const previousToml = existsSync(tomlPath) ? readFileSync(tomlPath, "utf8") : null;
-  const statePath = join(cwd, ".lme2harness", "bridge.json");
-  const state = prepareBridgeState(statePath, env.config, { ...opts, previousToml });
-  if (opts.rotateToken) log.info("受信パスのトークンを作り直します。配備が終わると前の URL は使えなくなります（途中で失敗したら前の URL のままです）");
   const harnessWorker = env.config.harness_worker_name ?? new URL(env.config.harness_url).hostname.split(".")[0];
   const toml = `# lme2harness bridge（自動生成。直したいときは lme2harness bridge を再実行）
 name = "${state.worker_name}"
@@ -209,11 +210,18 @@ MAX_CLOCK_SKEW_SECONDS = "300"
     };
     for (const [k, v] of Object.entries(secrets)) {
       if (!v) continue;
+      // 作り直したトークンは、Worker に登録し始める直前に保存する（途中で止まっても、次の --deploy で同じトークンを登録し終えられるように）
+      if (opts.rotateToken && k === "PATH_TOKEN_LINE") saveBridgeState(statePath, state);
       log.info(`  secret ${k}`);
-      await run(wr[0], [...wr.slice(1), "secret", "put", k], bridgeDir, v, cfEnv);
+      try {
+        await run(wr[0], [...wr.slice(1), "secret", "put", k], bridgeDir, v, cfEnv);
+      } catch (e) {
+        if (opts.rotateToken && k.startsWith("PATH_TOKEN_")) {
+          throw new Error(`${(e as Error).message}\nトークンの入れ替えが途中で止まりました。新しいトークンは保存してあるので、\`lme2harness bridge --deploy\`（--rotate-token なし）をもう一度実行して登録し終えてから、表示される URL をエルメに貼り直してください`);
+        }
+        throw e;
+      }
     }
-    // 作り直したトークンは、Worker に登録し終えてから保存する
-    if (opts.rotateToken) saveBridgeState(statePath, state);
     // シークレットを再生成した直後は、エルメが最大約1分は旧シークレットで送ってくる。
     // 旧シークレットは「新しいシークレットを登録した時刻＋2分」だけ受け付ける
     const previous = env.secrets.LME_WEBHOOK_SECRET_PREVIOUS;
