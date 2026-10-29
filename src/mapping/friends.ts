@@ -357,11 +357,16 @@ function addFriendScenarios(f: FriendInfo, ctx: PlanContext, stats: FriendMapSta
       ...(holdIfActive
         ? { valueSql: { status: `CASE WHEN ${active} THEN 'paused' ELSE 'active' END`, next_delivery_at: `CASE WHEN ${active} THEN NULL ELSE ${quote(progress.nextAt)} END` } }
         : {}),
-      // L Harness が自分で入れた同じ人・同じシナリオの所属があれば、そちらを残して入れない（同じ人の二重登録で止まらないように）
-      insertWhere: `NOT EXISTS (SELECT 1 FROM friend_scenarios WHERE friend_id = ${quote(f.id)} AND scenario_id = ${quote(scenarioId)} AND id <> ${quote(id)})`,
+      // L Harness が自分で入れた同じ人・同じシナリオの所属（完了以外）があれば、そちらを残して新しくは入れない
+      // （同じ人の二重登録で一意制約に当たって止まらないように）。前に入れた行の更新は続ける
+      ...(progress.status === "completed"
+        ? {}
+        : { insertWhere: `EXISTS (SELECT 1 FROM friend_scenarios WHERE id = ${quote(id)}) OR NOT EXISTS (SELECT 1 FROM friend_scenarios WHERE friend_id = ${quote(f.id)} AND scenario_id = ${quote(scenarioId)} AND id <> ${quote(id)} AND status != 'completed')` }),
       update: ["status", "current_step_order", "next_delivery_at", "updated_at"],
-      // L Harness でシナリオを動かし始めた後は、L Harness 側の進行を上書きしない
-      updateWhere: "(SELECT is_active FROM scenarios WHERE scenarios.id = friend_scenarios.scenario_id) = 0",
+      // L Harness でシナリオを動かし始めた後は、L Harness 側の進行を上書きしない。L Harness の所属と並ぶ行も変えない
+      updateWhere:
+        "(SELECT is_active FROM scenarios WHERE scenarios.id = friend_scenarios.scenario_id) = 0" +
+        " AND NOT EXISTS (SELECT 1 FROM friend_scenarios AS other WHERE other.friend_id = friend_scenarios.friend_id AND other.scenario_id = friend_scenarios.scenario_id AND other.id <> friend_scenarios.id AND other.status != 'completed')",
     });
     stats.scenarios += 1;
     sr.migrated += 1;

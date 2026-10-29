@@ -69,6 +69,10 @@ describe("ブリッジの状態", () => {
     expect(() => prepareBridgeState(path, config, { previousToml: toml("11111111-1111-1111-1111-111111111111", config.harness_url!) })).toThrow(/別の移行先/);
     expect(() => prepareBridgeState(path, config, { previousToml: toml(config.d1_database_id!, "https://other.example.workers.dev") })).toThrow(/別の移行先/);
     expect(JSON.parse(readFileSync(path, "utf8")).target).toBeUndefined();
+    // 字下げ・単一引用符でも読む。読めなければ止める
+    const indented = `name = "x"\n[[d1_databases]]\n  database_id = '11111111-1111-1111-1111-111111111111'\n[vars]\n  HARNESS_URL = '${config.harness_url}'\n`;
+    expect(() => prepareBridgeState(path, config, { previousToml: indented })).toThrow(/別の移行先/);
+    expect(() => prepareBridgeState(path, config, { previousToml: `name = "x"\n` })).toThrow(/読めませんでした/);
     expect(prepareBridgeState(path, config, { previousToml: toml(config.d1_database_id!, `${config.harness_url}/`) })).toMatchObject(old);
   });
 

@@ -149,7 +149,9 @@ async function lmeTagName(env: Env, tagId: number): Promise<string | null> {
 }
 
 /** エルメ tag_id → L Harness tags.id。エルメ API でタグ名を引き、L Harness の同名タグを使う（無ければ作る）。 */
-async function resolveTag(env: Env, tagId: number): Promise<string | null> {
+async function resolveTag(env: Env, tagId: number, misses: Set<number>): Promise<string | null> {
+  // 同じ配信の中で見つからなかったタグは引き直さない（返事の上限時間を一覧の取得で使い切らないように）
+  if (misses.has(tagId)) return null;
   const cached = tagCache.get(tagId);
   if (cached && Date.now() - cached.at < TAG_NAME_TTL_MS) return cached.id;
   let id: string | null = null;
@@ -167,8 +169,9 @@ async function resolveTag(env: Env, tagId: number): Promise<string | null> {
       id = ((await created.json()) as { data?: { id?: string } }).data?.id ?? null;
     }
   }
-  // 見つからなかったものは覚えない（エルメで作ったばかりのタグを、次の出来事ですぐ引けるように）
+  // 見つからなかったものは、この配信の中だけ覚える（エルメで作ったばかりのタグを、次の配信ですぐ引けるように）
   if (id) tagCache.set(tagId, { id, at: Date.now() });
+  else misses.add(tagId);
   return id;
 }
 
@@ -200,6 +203,7 @@ async function forwardLineEvents(env: Env, rawBody: ArrayBuffer): Promise<boolea
 /** L Harness に反映できなかった出来事の数を返す（友だちが未登録・タグ名が引けないものは再送しても同じなので数えない） */
 async function applyLmeEvents(env: Env, events: LmeEvent[]): Promise<number> {
   let failed = 0;
+  const misses = new Set<number>();
   const check = (res: Response, what: string) => {
     if (res.ok) return;
     failed += 1;
@@ -213,7 +217,7 @@ async function applyLmeEvents(env: Env, events: LmeEvent[]): Promise<number> {
         continue;
       }
       if (ev.type === "tag" && typeof ev.tag_id === "number") {
-        const tagId = await resolveTag(env, ev.tag_id);
+        const tagId = await resolveTag(env, ev.tag_id, misses);
         if (!tagId) {
           console.warn(`タグを解決できません: lme tag_id=${ev.tag_id}（LME_API_KEY が無いと名前を引けません）`);
           continue;

@@ -31,10 +31,10 @@ function bridgeTarget(config: Lme2HarnessConfig): string {
 }
 
 /** 前に配備した wrangler.toml から、その時の移行先（D1・L Harness の URL）を読む */
-function previousTarget(previousToml: string | null): string | null {
-  if (!previousToml) return null;
-  const id = previousToml.match(/^database_id\s*=\s*"([^"]*)"/m)?.[1];
-  const url = previousToml.match(/^HARNESS_URL\s*=\s*"([^"]*)"/m)?.[1];
+function previousTarget(previousToml: string): string | null {
+  const value = (key: string) => previousToml.match(new RegExp(`^[ \\t]*${key}[ \\t]*=[ \\t]*(?:"([^"]*)"|'([^']*)')`, "m"))?.slice(1).find((v) => v !== undefined);
+  const id = value("database_id");
+  const url = value("HARNESS_URL");
   return id && url ? `${id}:${url.replace(/\/+$/, "")}` : null;
 }
 
@@ -57,7 +57,13 @@ export function prepareBridgeState(
 ): BridgeState {
   let state = readJsonFile<BridgeState>(statePath);
   const target = bridgeTarget(config);
-  const recorded = state ? (state.target ?? previousTarget(opts.previousToml ?? null)) : null;
+  let recorded = state?.target ?? null;
+  if (state && !recorded && opts.previousToml) {
+    recorded = previousTarget(opts.previousToml);
+    if (!recorded) {
+      throw new Error("bridge/wrangler.toml から、前に配備した移行先（database_id・HARNESS_URL）を読めませんでした。別の移行先へ向け直さないよう止めました。同じ移行先なら、bridge/wrangler.toml の database_id と HARNESS_URL を lme2harness.config.json の値に合わせてから再実行してください");
+    }
+  }
   if (recorded && recorded !== target) {
     throw new Error("このフォルダのブリッジは、別の移行先（L Harness・D1）向けに作ったものです。配備し直すと先の転送が止まるので止めました。別の移行先には別のフォルダで用意してください");
   }

@@ -186,6 +186,16 @@ describe("移行し直しても L Harness で有効にした状態を変えな�
     db.close();
   });
 
+  it("L Harness に同じ人・同じシナリオの完了の記録があっても、前に入れた所属はエルメに合わせて止める", () => {
+    const db = makeDb();
+    applyAll(db, plan().rowsByTable);
+    db.exec(`INSERT INTO friend_scenarios (id, friend_id, scenario_id, current_step_order, status, started_at, updated_at) VALUES ('lh-done', '${TARO}', '${FOLLOW_SCENARIO}', 9999, 'completed', '2026-09-01T10:00:00.000+09:00', '2026-09-01T10:00:00.000+09:00')`);
+    applyAll(db, plan({}, storeWith((f) => { f.detail.scenarios[0].status = "stopped"; })).rowsByTable);
+    expect(db.all(`SELECT status, next_delivery_at FROM friend_scenarios WHERE friend_id = '${TARO}' AND scenario_id = '${FOLLOW_SCENARIO}' AND id <> 'lh-done'`)).toEqual([{ status: "paused", next_delivery_at: null }]);
+    expect(db.count("friend_scenarios", "id = 'lh-done' AND status = 'completed'")).toBe(1);
+    db.close();
+  });
+
   it("「最初から有効にする」設定では、有効な自動応答もエルメの内容で書き換える", () => {
     const db = makeDb();
     applyAll(db, plan({ activate_automations: true }).rowsByTable);

@@ -265,6 +265,26 @@ describe("bridge worker: エルメのタグ名を引けなかったとき", () =
     }
   });
 
+  it("同じ配信の中で見つからなかったタグは引き直さない（一覧の取得で返事の上限時間を使い切らない）", async () => {
+    const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32) });
+    let lists = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      if (String(url).startsWith("https://api.lmes.jp/v1/tags")) lists += 1;
+      return Response.json({ success: true, data: { tags: [] }, pagination: { has_next: false } });
+    }) as typeof fetch;
+    try {
+      const events = Array.from({ length: 9 }, () => ({ lmessage_friend_id: 1001, line_friend_id: "U00000000000000000000000000001001", type: "tag", action: "add", tag_id: 404 }));
+      const c = ctx();
+      const req = new Request(`https://bridge.example/lme/lmessage/${env.PATH_TOKEN_LMESSAGE}`, { method: "POST", headers: { "X-Lme-Signature": "whsec_a", "X-Lme-Timestamp": ts() }, body: JSON.stringify({ events }) });
+      expect((await worker.fetch(req, env, c)).status).toBe(200);
+      await flush(c);
+      expect(lists).toBe(1);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("エルメで見つからなかったタグは覚えず、次の出来事で引き直す（作ったばかりのタグ）", async () => {
     const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32) });
     const state = { lmeStatus: 200, lmeTags: [] as Array<{ id: number; name: string }>, tagAdds: [] as string[] };
