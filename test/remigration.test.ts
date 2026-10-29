@@ -33,6 +33,11 @@ function applyAll(db: LocalD1, rowsByTable: Map<string, Row[]>, tables = ORDER):
   for (const table of tables) db.execStatements((rowsByTable.get(table) ?? []).map(renderInsert));
 }
 
+/** このツールが入れた行の id（L Harness の初期データを除く） */
+function migratedIds(table: string): string {
+  return [...new Set((plan().rowsByTable.get(table) ?? []).map((r) => `'${r.values.id}'`))].join(", ");
+}
+
 /** 見本スナップショットの1人分を差し替えた取得結果 */
 function storeWith(edit: (friend: Record<string, any>) => void): SnapshotStore {
   const base = new SnapshotStore(FIXTURE);
@@ -136,6 +141,32 @@ describe("移行し直しても L Harness で有効にした状態を変えな�
     expect(db.all(`SELECT name, delivery_mode FROM scenarios WHERE id = '${FOLLOW_SCENARIO}'`)[0]).toEqual({ name: "L Harness で直した名前", delivery_mode: "relative" });
     expect(db.all<{ message_content: string }>(`SELECT message_content FROM scenario_steps WHERE scenario_id = '${FOLLOW_SCENARIO}' AND step_order = 1`)[0].message_content).toBe("L Harness で直した文");
     expect(db.count("scenario_steps", `scenario_id = '${FOLLOW_SCENARIO}'`)).toBe(2);
+    db.close();
+  });
+
+  it("有効にした自動応答・フォームは、L Harness で直した中身をエルメの内容に戻さない（無効のものは最新にする）", () => {
+    const db = makeDb();
+    applyAll(db, plan().rowsByTable);
+    const [active, inactive] = db.all<{ id: string; response_content: string }>(`SELECT id, response_content FROM auto_replies WHERE id IN (${migratedIds("auto_replies")}) ORDER BY id LIMIT 2`);
+    expect(inactive).toBeDefined();
+    db.exec(`UPDATE auto_replies SET is_active = 1, response_content = 'L Harness で直した返信' WHERE id = '${active.id}'`);
+    db.exec(`UPDATE auto_replies SET response_content = '古い返信' WHERE id = '${inactive.id}'`);
+    const form = db.all<{ id: string }>(`SELECT id FROM forms WHERE id IN (${migratedIds("forms")}) LIMIT 1`)[0];
+    db.exec(`UPDATE forms SET is_active = 1, name = 'L Harness で直したフォーム' WHERE id = '${form.id}'`);
+    applyAll(db, plan().rowsByTable);
+    expect(db.all(`SELECT is_active, response_content FROM auto_replies WHERE id = '${active.id}'`)[0]).toEqual({ is_active: 1, response_content: "L Harness で直した返信" });
+    expect(db.all(`SELECT response_content FROM auto_replies WHERE id = '${inactive.id}'`)[0]).toEqual({ response_content: inactive.response_content });
+    expect(db.all(`SELECT is_active, name FROM forms WHERE id = '${form.id}'`)[0]).toEqual({ is_active: 1, name: "L Harness で直したフォーム" });
+    db.close();
+  });
+
+  it("「最初から有効にする」設定では、有効な自動応答もエルメの内容で書き換える", () => {
+    const db = makeDb();
+    applyAll(db, plan({ activate_automations: true }).rowsByTable);
+    const row = db.all<{ id: string; response_content: string }>(`SELECT id, response_content FROM auto_replies WHERE is_active = 1 AND id IN (${migratedIds("auto_replies")}) LIMIT 1`)[0];
+    db.exec(`UPDATE auto_replies SET response_content = '別の返信' WHERE id = '${row.id}'`);
+    applyAll(db, plan({ activate_automations: true }).rowsByTable);
+    expect(db.all<{ response_content: string }>(`SELECT response_content FROM auto_replies WHERE id = '${row.id}'`)[0].response_content).toBe(row.response_content);
     db.close();
   });
 

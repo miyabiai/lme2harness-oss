@@ -4,7 +4,7 @@ import type { SourceFormDetail, SourceFormField, SourceFormResponse } from "../s
 import { harnessId } from "../harness/ids.js";
 import { sourceToHarnessJst } from "../harness/time.js";
 import { htmlToText } from "./text.js";
-import { firstMappedTagId, tagIdsFromActions, textFromActions } from "./masters.js";
+import { firstMappedTagId, keepActiveRow, tagIdsFromActions, textFromActions } from "./masters.js";
 
 /**
  * エルメのフォーム → L Harness forms.fields（JSON 配列）
@@ -129,6 +129,7 @@ export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
         updated_at: ctx.now,
       },
       update: ["name", "description", "fields", "on_submit_tag_id", "on_submit_message_type", "on_submit_message_content", "updated_at"],
+      ...keepActiveRow(ctx, "forms"),
     });
     r.migrated += 1;
     for (const s of new Set(skipped)) ctx.note("forms", "フォーム", `移せない項目があります: ${s}`);
@@ -147,6 +148,7 @@ export function mapForms(store: SnapshotStore, ctx: PlanContext): void {
       });
     }
   }
+  if (!ctx.options.activate_automations && r.migrated) r.notes.push("L Harness で有効にしたフォームは、移行し直しても設問・送信後の動きを変えません（無効のものはエルメの最新の内容にします）");
   if (r.migrated) r.notes.push("回答は L Harness の「回答一覧」に入ります。添付ファイルはエルメの URL を回答データに残しています");
 }
 

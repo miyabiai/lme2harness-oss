@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { cloudflareEnv, loadEnv, requireHarness } from "./shared.js";
@@ -30,32 +30,85 @@ function bridgeTarget(config: Lme2HarnessConfig): string {
   return `${config.d1_database_id ?? config.d1_database_name ?? "-"}:${(config.harness_url ?? "-").replace(/\/+$/, "")}`;
 }
 
+/** 前に配備した wrangler.toml から、その時の移行先（D1・L Harness の URL）を読む */
+function previousTarget(previousToml: string | null): string | null {
+  if (!previousToml) return null;
+  const id = previousToml.match(/^database_id\s*=\s*"([^"]*)"/m)?.[1];
+  const url = previousToml.match(/^HARNESS_URL\s*=\s*"([^"]*)"/m)?.[1];
+  return id && url ? `${id}:${url.replace(/\/+$/, "")}` : null;
+}
+
+/** ブリッジの状態を保存する（本人だけが読める権限で） */
+export function saveBridgeState(statePath: string, state: BridgeState): void {
+  mkdirSync(dirname(statePath), { recursive: true, mode: 0o700 });
+  writeFileSync(statePath, JSON.stringify(state, null, 2), { mode: 0o600 });
+}
+
 /**
  * このフォルダのブリッジの状態（受信パスのトークン・Worker 名）を読み、無ければ作る。
  * 前に作った状態は Worker 名・トークンを変えない（エルメに貼った URL がそのまま使えるように）。
+ * 移行先を記録する前の版で作った状態は、前の wrangler.toml の移行先と照らし合わせる。
+ * トークンを作り直すときは保存しない（配備が終わってから saveBridgeState で保存する。途中で失敗しても前の URL のまま使えるように）。
  */
-export function prepareBridgeState(statePath: string, config: Lme2HarnessConfig, opts: { deploy?: boolean; rotateToken?: boolean } = {}): BridgeState {
+export function prepareBridgeState(
+  statePath: string,
+  config: Lme2HarnessConfig,
+  opts: { deploy?: boolean; rotateToken?: boolean; previousToml?: string | null } = {},
+): BridgeState {
   let state = readJsonFile<BridgeState>(statePath);
   const target = bridgeTarget(config);
-  if (state?.target && state.target !== target) {
+  const recorded = state ? (state.target ?? previousTarget(opts.previousToml ?? null)) : null;
+  if (recorded && recorded !== target) {
     throw new Error("このフォルダのブリッジは、別の移行先（L Harness・D1）向けに作ったものです。配備し直すと先の転送が止まるので止めました。別の移行先には別のフォルダで用意してください");
   }
   if (state && opts.rotateToken) {
     if (!opts.deploy) throw new Error("--rotate-token は --deploy と一緒に使ってください（配備した Worker のトークンを入れ替えないと、前の URL が使えたままになります）");
-    state = { ...state, path_token_line: token(), path_token_lmessage: token() };
+    return { ...state, target, path_token_line: token(), path_token_lmessage: token() };
   }
   if (!state) state = { path_token_line: token(), path_token_lmessage: token(), worker_name: config.bridge_worker_name ?? bridgeWorkerName(), created_at: new Date().toISOString() };
   state.target ??= target;
-  mkdirSync(dirname(statePath), { recursive: true, mode: 0o700 });
-  writeFileSync(statePath, JSON.stringify(state, null, 2), { mode: 0o600 });
+  saveBridgeState(statePath, state);
   return state;
 }
 
-/** 前に配備した wrangler.toml の重複排除（KV）の設定を引き継ぐ */
+/** 前に配備した wrangler.toml の重複排除（KV）の設定を引き継ぐ（コメントにした設定は引き継がない） */
 export function keptKvBlock(previous: string | null): string {
   if (!previous) return "";
-  const match = previous.match(/\[\[kv_namespaces\]\][\s\S]*?(?=\n\s*\[|$)/);
-  return match ? `\n${match[0].trim()}\n` : "";
+  const blocks = [...previous.matchAll(/^\[\[kv_namespaces\]\][^\n]*(?:\n(?!\s*\[)[^\n]*)*/gm)].map((m) => m[0].trim());
+  return blocks.length ? `\n${blocks.join("\n\n")}\n` : "";
+}
+
+/** ./bridge に置く Worker 一式（同梱の雛形からの相対パス）。wrangler.toml はこのツールが毎回作る */
+function templateFiles(dir: string, base = dir): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) return e.name === "node_modules" || e.name === ".wrangler" ? [] : templateFiles(full, base);
+    return e.name === "wrangler.toml" ? [] : [relative(base, full)];
+  });
+}
+
+/**
+ * 同梱の Worker 一式を ./bridge に入れる。前の版で入れたものと中身が違うファイルは、
+ * 控え（backupDir）に移してから新しくする（直した Worker が、配備し直したときに届くように）。
+ * 新しくしたファイル（前から有ったもの）の一覧を返す。
+ */
+export function syncBridgeTemplate(src: string, bridgeDir: string, backupDir: string): string[] {
+  const updated: string[] = [];
+  for (const rel of templateFiles(src)) {
+    const from = join(src, rel);
+    const to = join(bridgeDir, rel);
+    const next = readFileSync(from);
+    if (existsSync(to)) {
+      const current = readFileSync(to);
+      if (current.equals(next)) continue;
+      mkdirSync(dirname(join(backupDir, rel)), { recursive: true });
+      writeFileSync(join(backupDir, rel), current);
+      updated.push(rel);
+    }
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, next);
+  }
+  return updated;
 }
 
 function token(): string {
@@ -93,18 +146,24 @@ export async function runBridge(opts: { deploy?: boolean; rotateToken?: boolean 
   const env = loadEnv();
   const cwd = process.cwd();
   const bridgeDir = join(cwd, "bridge");
-  if (!existsSync(join(bridgeDir, "src", "index.ts"))) {
-    const src = packagedBridgeDir();
-    if (!existsSync(join(src, "src", "index.ts"))) throw new Error(`ブリッジの雛形が見つかりません: ${src}`);
-    mkdirSync(bridgeDir, { recursive: true });
-    cpSync(src, bridgeDir, { recursive: true, filter: (p) => !p.includes("node_modules") && !p.includes(".wrangler") && !p.endsWith("wrangler.toml") });
-    log.info("./bridge に Worker の雛形をコピーしました");
+  const src = packagedBridgeDir();
+  if (!existsSync(join(src, "src", "index.ts"))) throw new Error(`ブリッジの雛形が見つかりません: ${src}`);
+  const fresh = !existsSync(join(bridgeDir, "src", "index.ts"));
+  const backupDir = join(cwd, ".lme2harness", "bridge-backup", new Date().toISOString().replace(/[:.]/g, "-"));
+  const updated = syncBridgeTemplate(src, bridgeDir, backupDir);
+  if (fresh) log.info("./bridge に Worker の雛形をコピーしました");
+  else if (updated.length) {
+    log.info(`./bridge の Worker を、このツールの版に合わせて新しくしました（${updated.join("・")}）。前のものは ${relative(cwd, backupDir)} に控えています`);
+    if (!opts.deploy) log.info("配備中の Worker を新しくするには `lme2harness bridge --deploy` を実行してください");
   }
   if (!env.config.harness_url) throw new Error("harness_url（lme2harness.config.json）が未設定です");
   if (!env.config.d1_database_id) throw new Error("d1_database_id（lme2harness.config.json）が未設定です。L Harness の apps/worker/wrangler.toml の database_id を入れてください");
 
-  const state = prepareBridgeState(join(cwd, ".lme2harness", "bridge.json"), env.config, opts);
-  if (opts.rotateToken) log.info("受信パスのトークンを作り直しました。配備が終わると前の URL は使えなくなります");
+  const tomlPath = join(bridgeDir, "wrangler.toml");
+  const previousToml = existsSync(tomlPath) ? readFileSync(tomlPath, "utf8") : null;
+  const statePath = join(cwd, ".lme2harness", "bridge.json");
+  const state = prepareBridgeState(statePath, env.config, { ...opts, previousToml });
+  if (opts.rotateToken) log.info("受信パスのトークンを作り直します。配備が終わると前の URL は使えなくなります（途中で失敗したら前の URL のままです）");
   const harnessWorker = env.config.harness_worker_name ?? new URL(env.config.harness_url).hostname.split(".")[0];
   const toml = `# lme2harness bridge（自動生成。直したいときは lme2harness bridge を再実行）
 name = "${state.worker_name}"
@@ -128,9 +187,7 @@ STRIP_REPLY_TOKEN = "1"
 SYNC_FRIEND_INFO = "1"
 MAX_CLOCK_SKEW_SECONDS = "300"
 `;
-  const tomlPath = join(bridgeDir, "wrangler.toml");
-  const previous = existsSync(tomlPath) ? readFileSync(tomlPath, "utf8") : null;
-  writeFileSync(tomlPath, toml + keptKvBlock(previous));
+  writeFileSync(tomlPath, toml + keptKvBlock(previousToml));
 
   if (opts.deploy) {
     requireHarness(env);
@@ -155,6 +212,8 @@ MAX_CLOCK_SKEW_SECONDS = "300"
       log.info(`  secret ${k}`);
       await run(wr[0], [...wr.slice(1), "secret", "put", k], bridgeDir, v, cfEnv);
     }
+    // 作り直したトークンは、Worker に登録し終えてから保存する
+    if (opts.rotateToken) saveBridgeState(statePath, state);
     // シークレットを再生成した直後は、エルメが最大約1分は旧シークレットで送ってくる。
     // 旧シークレットは「新しいシークレットを登録した時刻＋2分」だけ受け付ける
     const previous = env.secrets.LME_WEBHOOK_SECRET_PREVIOUS;

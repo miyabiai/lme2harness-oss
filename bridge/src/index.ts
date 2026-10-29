@@ -130,7 +130,7 @@ async function findFriendId(env: Env, lineUserId: string | undefined, lmeFriendI
   return null;
 }
 
-/** エルメ tag_id → L Harness tags.id の解決結果（TAG_NAME_TTL_MS の間使い回す） */
+/** エルメ tag_id → L Harness tags.id の解決結果（見つかったものだけ TAG_NAME_TTL_MS の間使い回す） */
 const tagCache = new Map<number, { id: string | null; at: number }>();
 
 async function lmeTagName(env: Env, tagId: number): Promise<string | null> {
@@ -138,7 +138,8 @@ async function lmeTagName(env: Env, tagId: number): Promise<string | null> {
   // 公開 API のタグ一覧は最大 500 件/ページ。タグは多くないので毎回全件を引く（キャッシュ 10 分）
   for (let page = 1; page <= 20; page++) {
     const res = await fetch(`https://api.lmes.jp/v1/tags?page=${page}&limit=500`, { headers: { "X-LME-API-KEY": env.LME_API_KEY } });
-    if (!res.ok) return null;
+    // 取れなかったときは「タグが無い」と区別して投げる（エルメの再送で引き直す）
+    if (!res.ok) throw new Error(`エルメのタグ一覧が ${res.status} を返しました`);
     const json = (await res.json()) as { data?: { tags?: Array<{ id: number; name: string }> }; pagination?: { has_next?: boolean } };
     const hit = json.data?.tags?.find((t) => t.id === tagId);
     if (hit) return hit.name;
@@ -166,7 +167,8 @@ async function resolveTag(env: Env, tagId: number): Promise<string | null> {
       id = ((await created.json()) as { data?: { id?: string } }).data?.id ?? null;
     }
   }
-  tagCache.set(tagId, { id, at: Date.now() });
+  // 見つからなかったものは覚えない（エルメで作ったばかりのタグを、次の出来事ですぐ引けるように）
+  if (id) tagCache.set(tagId, { id, at: Date.now() });
   return id;
 }
 

@@ -223,11 +223,12 @@ export function scenarioActiveSql(scenarioId: string): string {
 }
 
 /**
- * L Harness で有効にした（動いている）シナリオは、移行し直しても設定を書き換えない。
+ * 無効で入れたもの（シナリオ・自動応答・フォーム）を L Harness で有効にしたら、移行し直しても中身を書き換えない
+ * （L Harness で直した文が、動いたままエルメの文に戻らないように）。
  * 「最初から有効にする」設定（activate_automations）のときは、これまでどおり書き換える。
  */
-function keepActiveScenario(ctx: PlanContext): Partial<Row> {
-  return ctx.options.activate_automations ? {} : { updateWhere: "scenarios.is_active = 0" };
+export function keepActiveRow(ctx: PlanContext, table: string): Partial<Row> {
+  return ctx.options.activate_automations ? {} : { updateWhere: `${table}.is_active = 0` };
 }
 
 /** 有効にしたシナリオには、ステップを足すことも書き換えることもしない（動いている配信を変えないため） */
@@ -324,7 +325,7 @@ function mapScenario(s: SourceScenarioListItem, detail: SourceScenarioDetail | u
       created_at: sourceToHarnessJst(s.created_at, ctx.now),
     }),
     update: ["name", "description", "delivery_mode", "updated_at"],
-    ...keepActiveScenario(ctx),
+    ...keepActiveRow(ctx, "scenarios"),
   });
   const migratedSteps: MigratedStep[] = [];
   ctx.scenarioSteps.set(s.id, { name: s.name, deliveryMode, steps: migratedSteps });
@@ -418,7 +419,7 @@ export function mapWelcome(store: SnapshotStore, ctx: PlanContext): void {
         delivery_mode: "relative",
         created_at: ctx.now,
       }),
-      ...keepActiveScenario(ctx),
+      ...keepActiveRow(ctx, "scenarios"),
     });
     ctx.add({
       table: "scenario_steps",
@@ -471,6 +472,7 @@ export function mapAutoReplies(store: SnapshotStore, ctx: PlanContext, templateT
           is_active: active,
           created_at: sourceToHarnessJst(rule.created_at, ctx.now),
         },
+        ...keepActiveRow(ctx, "auto_replies"),
       });
     });
     r.migrated += 1;
@@ -478,6 +480,7 @@ export function mapAutoReplies(store: SnapshotStore, ctx: PlanContext, templateT
     if (rule.time_mode && rule.time_mode !== "always") ctx.note("auto_replies", "自動応答", "時間帯の条件は移していません");
     if (rule.filters?.length) ctx.note("auto_replies", "自動応答", "対象の絞り込み条件は移していません");
   }
+  if (!ctx.options.activate_automations && r.migrated) r.notes.push("L Harness で有効にした自動応答は、移行し直しても返信の中身を変えません（無効のものはエルメの最新の内容にします）");
   if (r.migrated) r.notes.push("すべて停止状態で入れています。切替後に有効化してください");
 }
 

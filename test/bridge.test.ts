@@ -224,3 +224,60 @@ describe("bridge worker: L Harness へ渡せなかったとき", () => {
     }
   });
 });
+
+describe("bridge worker: エルメのタグ名を引けなかったとき", () => {
+  const send = (env: Env, tagId: number, deliveryId: string) => {
+    const c = ctx();
+    const req = new Request(`https://bridge.example/lme/lmessage/${env.PATH_TOKEN_LMESSAGE}`, {
+      method: "POST",
+      headers: { "X-Lme-Signature": "whsec_a", "X-Lme-Timestamp": ts(), "X-Lme-Delivery-Id": deliveryId },
+      body: JSON.stringify({ events: [{ lmessage_friend_id: 1001, line_friend_id: "U00000000000000000000000000001001", type: "tag", action: "add", tag_id: tagId }] }),
+    });
+    return worker.fetch(req, env, c).then(async (res) => (await flush(c), res));
+  };
+
+  function fakeApis(state: { lmeStatus: number; lmeTags: Array<{ id: number; name: string }>; tagAdds: string[] }): typeof fetch {
+    return (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.startsWith("https://api.lmes.jp/v1/tags")) {
+        if (state.lmeStatus !== 200) return new Response("busy", { status: state.lmeStatus });
+        return Response.json({ success: true, data: { tags: state.lmeTags }, pagination: { has_next: false } });
+      }
+      if (u.endsWith("/api/tags") && (init?.method ?? "GET") === "GET") return Response.json({ success: true, data: [{ id: "tag-vip", name: "VIP" }, { id: "tag-new", name: "新タグ" }] });
+      if (u.endsWith("/tags") && init?.method === "POST") state.tagAdds.push(String(init.body));
+      return Response.json({ success: true, data: {} });
+    }) as typeof fetch;
+  }
+
+  it("エルメのタグ一覧が一時的に失敗したら 502 を返し、再送で付け直す（「無いタグ」として捨てない）", async () => {
+    const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32), DEDUP: memoryKv() });
+    const state = { lmeStatus: 503, lmeTags: [{ id: 202, name: "VIP" }], tagAdds: [] as string[] };
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fakeApis(state);
+    try {
+      expect((await send(env, 202, "d-lme-busy")).status).toBe(502);
+      expect(state.tagAdds).toHaveLength(0);
+      state.lmeStatus = 200;
+      expect((await send(env, 202, "d-lme-busy")).status).toBe(200);
+      expect(state.tagAdds).toEqual([JSON.stringify({ tagId: "tag-vip" })]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("エルメで見つからなかったタグは覚えず、次の出来事で引き直す（作ったばかりのタグ）", async () => {
+    const { env } = makeEnv({ LME_API_KEY: "lme_live_sk_" + "0".repeat(32) });
+    const state = { lmeStatus: 200, lmeTags: [] as Array<{ id: number; name: string }>, tagAdds: [] as string[] };
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fakeApis(state);
+    try {
+      expect((await send(env, 303, "d-new-1")).status).toBe(200);
+      expect(state.tagAdds).toHaveLength(0);
+      state.lmeTags = [{ id: 303, name: "新タグ" }];
+      expect((await send(env, 303, "d-new-2")).status).toBe(200);
+      expect(state.tagAdds).toEqual([JSON.stringify({ tagId: "tag-new" })]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
